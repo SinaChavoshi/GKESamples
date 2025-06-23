@@ -1,0 +1,27 @@
+apiVersion: jobset.x-k8s.io/v1alpha2
+kind: JobSet
+metadata:
+  name: tpu-movie-ranking-jobset
+  annotations:
+    alpha.jobset.sigs.k8s.io/exclusive-placement: "true"
+spec:
+  failurePolicy:
+    maxRestarts: 3
+  replicatedJobs:
+    - name: worker
+      replicas: 2
+      template: # This is the Job template
+        spec:
+          # This is the spec for the Job itself
+          # It contains a template for the Pods it will create
+          template: # This is the Pod template
+            spec:   # This is the spec for the Pod
+              nodeSelector:
+                cloud.google.com/gke-tpu-topology: 2x4
+              containers:
+              - name: training-container
+                image: us-east5-docker.pkg.dev/chavoshi-gke-dev/tpu-repo/tpu-training-app:v1
+                resources:
+                  limits:
+                    google.com/tpu: 4
+              restartPolicy: OnFailure # restartPolicy belongs to the Pod spec
