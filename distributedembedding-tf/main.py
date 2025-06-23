@@ -1,22 +1,26 @@
 import os
+import json
 os.environ["KERAS_BACKEND"] = "tensorflow"
 import keras
 import keras_rs
 import tensorflow as tf
 import tensorflow_datasets as tfds
 
-# 1. Initialize the TPUStrategy. This is required by keras-rs.
-# When running on the GKE nodes, TPUClusterResolver will automatically find the TPU.
-try:
-    resolver = tf.distribute.cluster_resolver.TPUClusterResolver()
-    tf.config.experimental_connect_to_cluster(resolver)
-    tf.tpu.experimental.initialize_tpu_system(resolver)
-    strategy = tf.distribute.TPUStrategy(resolver)
-    print("TPU strategy initialized.")
-except ValueError as e:
-    print(e)
-    print("Not running on TPU, falling back to default strategy.")
-    strategy = tf.distribute.get_strategy()
+# --- TPU Strategy Initialization for GKE with JobSet ---
+# JobSet creates a TF_CONFIG environment variable. We use a specific
+# resolver that reads this variable to initialize the TPU strategy.
+tf_config_str = os.environ.get("TF_CONFIG")
+if not tf_config_str:
+    raise RuntimeError("TF_CONFIG environment variable not set. This script must be run in a JobSet.")
+
+# This is the key change: initializing the resolver from TF_CONFIG.
+resolver = tf.distribute.cluster_resolver.TPUClusterResolver.from_tf_config(tf_config_str)
+
+tf.config.experimental_connect_to_cluster(resolver)
+tf.tpu.experimental.initialize_tpu_system(resolver)
+strategy = tf.distribute.TPUStrategy(resolver)
+print("TPU strategy successfully initialized from TF_CONFIG.")
+# --- End of Initialization Block ---
 
 print("Number of replicas:", strategy.num_replicas_in_sync)
 
@@ -49,10 +53,10 @@ shuffled_ratings = ratings.map(preprocess_rating).shuffle(
     100_000, seed=42, reshuffle_each_iteration=False
 )
 
-# 2. Data sharding for multi-worker training is still correct.
-# We determine the worker index from the environment variables set by JobSet.
-worker_index = int(os.environ.get("JOB_COMPLETION_INDEX", 0))
-num_workers = int(os.environ.get("JOBSET_SIZE", 1))
+# Shard the data for each worker based on its index from TF_CONFIG
+tf_config = json.loads(tf_config_str)
+worker_index = tf_config["task"]["index"]
+num_workers = len(tf_config["cluster"]["worker"])
 
 dataset = shuffled_ratings.shard(num_shards=num_workers, index=worker_index)
 
@@ -137,9 +141,10 @@ with strategy.scope():
         optimizer="adagrad",
     )
 
+# Only have the chief worker (index 0) print the training progress
 model.fit(train_ratings, epochs=5, verbose=1 if worker_index == 0 else 0)
 
-# 4. Only have the chief worker (index 0) print the final evaluation.
+# Only have the chief worker (index 0) print the final evaluation
 if worker_index == 0:
     print("Evaluation results:")
     model.evaluate(test_ratings, return_dict=True)
