@@ -19,7 +19,7 @@ spec:
                 cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
               containers:
               - name: training-container
-                image: us-east5-docker.pkg.dev/chavoshi-gke-dev/tpu-repo/tpu-training-app:v1
+                image: us-east5-docker.pkg.dev/chavoshi-gke-dev/tpu-repo/tpu-training-app:v2
                 resources:
                   limits:
                     google.com/tpu: 4
