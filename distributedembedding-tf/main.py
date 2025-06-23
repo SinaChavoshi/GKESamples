@@ -5,25 +5,34 @@ import keras_rs
 import tensorflow as tf
 import tensorflow_datasets as tfds
 
-# The distribution strategy is now handled automatically by TF_CONFIG!
+# 1. Initialize the TPUStrategy. This is required by keras-rs.
+# When running on the GKE nodes, TPUClusterResolver will automatically find the TPU.
+try:
+    resolver = tf.distribute.cluster_resolver.TPUClusterResolver()
+    tf.config.experimental_connect_to_cluster(resolver)
+    tf.tpu.experimental.initialize_tpu_system(resolver)
+    strategy = tf.distribute.TPUStrategy(resolver)
+    print("TPU strategy initialized.")
+except ValueError as e:
+    print(e)
+    print("Not running on TPU, falling back to default strategy.")
+    strategy = tf.distribute.get_strategy()
 
-# The per-replica batch size is what each of the 8 TPU cores will see.
+print("Number of replicas:", strategy.num_replicas_in_sync)
+
 PER_REPLICA_BATCH_SIZE = 256
-# The global batch size is the total batch size across all replicas.
-# TensorFlow's tf.data.Dataset.batch() will use this.
-GLOBAL_BATCH_SIZE = PER_REPLICA_BATCH_SIZE * 8 # 8 total TPU chips in a 2x4 topology
+GLOBAL_BATCH_SIZE = PER_REPLICA_BATCH_SIZE * strategy.num_replicas_in_sync
 
-# --- The rest of your code remains the same ---
 
-# Ratings data.
+
 ratings = tfds.load("movielens/100k-ratings", split="train")
-# Features of all the available movies.
 movies = tfds.load("movielens/100k-movies", split="train")
 
 users_count = (
     ratings.map(lambda x: tf.strings.to_number(x["user_id"], out_type=tf.int32))
     .reduce(tf.constant(0, tf.int32), tf.maximum)
-    .numpy())
+    .numpy()
+)
 
 movies_count = movies.cardinality().numpy()
 
@@ -37,19 +46,30 @@ def preprocess_rating(x):
     )
 
 shuffled_ratings = ratings.map(preprocess_rating).shuffle(
-    100_000, seed=42, reshuffle_each_iteration=False)
+    100_000, seed=42, reshuffle_each_iteration=False
+)
 
-# When using a tf.distribute strategy, you should shard the dataset.
-# Each worker will process a portion of the data.
-dataset = shuffled_ratings.shard(num_shards=2, index=int(os.environ.get("JOB_COMPLETION_INDEX", 0)))
+# 2. Data sharding for multi-worker training is still correct.
+# We determine the worker index from the environment variables set by JobSet.
+worker_index = int(os.environ.get("JOB_COMPLETION_INDEX", 0))
+num_workers = int(os.environ.get("JOBSET_SIZE", 1))
+
+dataset = shuffled_ratings.shard(num_shards=num_workers, index=worker_index)
+
+# Adjust dataset size per worker
+train_size_per_worker = 80_000 // num_workers
+test_size_per_worker = 20_000 // num_workers
 
 train_ratings = (
-    dataset.take(40_000).batch(GLOBAL_BATCH_SIZE, drop_remainder=True).cache())
+    dataset.take(train_size_per_worker).batch(GLOBAL_BATCH_SIZE, drop_remainder=True).cache()
+)
 test_ratings = (
-    dataset.skip(40_000)
-    .take(10_000)
+    dataset.skip(train_size_per_worker)
+    .take(test_size_per_worker)
     .batch(GLOBAL_BATCH_SIZE, drop_remainder=True)
-    .cache())
+    .cache()
+)
+
 
 EMBEDDING_DIMENSION = 32
 
@@ -108,17 +128,18 @@ class EmbeddingModel(keras.Model):
             )
         )
 
-# No need for "with strategy.scope()" if TF_CONFIG is set
-model = EmbeddingModel(FEATURE_CONFIGS)
-model.compile(
-    loss=keras.losses.MeanSquaredError(),
-    metrics=[keras.metrics.RootMeanSquaredError()],
-    optimizer="adagrad",
-)
+# 3. Model creation and compilation MUST be inside the strategy scope.
+with strategy.scope():
+    model = EmbeddingModel(FEATURE_CONFIGS)
+    model.compile(
+        loss=keras.losses.MeanSquaredError(),
+        metrics=[keras.metrics.RootMeanSquaredError()],
+        optimizer="adagrad",
+    )
 
-model.fit(train_ratings, epochs=5)
+model.fit(train_ratings, epochs=5, verbose=1 if worker_index == 0 else 0)
 
-# Only have the chief worker (index 0) print the final evaluation
-if int(os.environ.get("JOB_COMPLETION_INDEX", 0)) == 0:
+# 4. Only have the chief worker (index 0) print the final evaluation.
+if worker_index == 0:
     print("Evaluation results:")
     model.evaluate(test_ratings, return_dict=True)
