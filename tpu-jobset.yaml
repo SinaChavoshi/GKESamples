@@ -10,18 +10,17 @@ spec:
   replicatedJobs:
     - name: worker
       replicas: 2
-      template: # This is the Job template
+      template:
         spec:
-          # This is the spec for the Job itself
-          # It contains a template for the Pods it will create
-          template: # This is the Pod template
-            spec:   # This is the spec for the Pod
+          template:
+            spec:
               nodeSelector:
                 cloud.google.com/gke-tpu-topology: 2x4
+                cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
               containers:
               - name: training-container
                 image: us-east5-docker.pkg.dev/chavoshi-gke-dev/tpu-repo/tpu-training-app:v1
                 resources:
                   limits:
                     google.com/tpu: 4
-              restartPolicy: OnFailure # restartPolicy belongs to the Pod spec
+              restartPolicy: OnFailure
