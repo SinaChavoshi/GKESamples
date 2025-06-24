@@ -1,131 +1,43 @@
-# 1. Headless Service
-apiVersion: v1
-kind: Service
-metadata:
-  name: multislice-job-svc
-spec:
-  clusterIP: None
-  selector:
-    app: multislice-job-pod
----
-# 2. ConfigMap with the final scripts
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: jax-script-config
-data:
-  main.py: |
-    import jax
-    import os
-    import time
-
-    print("JAX SCRIPT: Starting.")
-    
-    coordinator_addr = os.environ.get("COORDINATOR_ADDR")
-    num_processes = int(os.environ.get("PROCESS_COUNT"))
-    process_id = int(os.environ.get("PROCESS_ID"))
-
-    print(f"JAX SCRIPT: This is process {process_id} of {num_processes}.")
-    print(f"JAX SCRIPT: Coordinator address is {coordinator_addr}.")
-    
-    jax.distributed.initialize(
-        coordinator_address=coordinator_addr,
-        num_processes=num_processes,
-        process_id=process_id,
-    )
-
-    print("--- JAX INITIALIZATION SUCCESSFUL ---")
-    print(f"This is process {jax.process_index()} of {jax.process_count()}.")
-    print(f"Global device count: {jax.device_count()}")
-    print(f"Local device count: {jax.local_device_count()}")
-    
-    print("Job complete. Sleeping for 600 seconds...")
-    time.sleep(600)
-
-  run.sh: |
-    #!/bin/bash
-    set -e
-    set -x
-
-    # --- ADDED TO PRINT TF_CONFIG ---
-    echo "--- CONTENTS OF TF_CONFIG ---"
-    echo "${TF_CONFIG}"
-    echo "-----------------------------"
-    # ---------------------------------
-
-    pip install "jax[tpu]" -f https://storage.googleapis.com/jax-releases/libtpu_releases.html
-
-    export PROCESS_ID=$(echo $HOSTNAME | cut -d'-' -f4)
-    export COORDINATOR_ADDR=${JOBSET_NAME}-slice-0-0.${JOBSET_SUBDOMAIN}:${COORDINATOR_PORT}
-    export PROCESS_COUNT=${REPLICAS}
-
-    echo "RUN.SH: Determined PROCESS_ID=${PROCESS_ID}"
-    echo "RUN.SH: Determined COORDINATOR_ADDR=${COORDINATOR_ADDR}"
-
-    echo "RUN.SH: Starting synchronization..."
-    for i in $(seq 0 $(($PROCESS_COUNT - 1))); do
-        TARGET_HOST="${JOBSET_NAME}-slice-${i}-0.${JOBSET_SUBDOMAIN}"
-        while ! getent hosts ${TARGET_HOST}; do
-            echo "Waiting for host ${TARGET_HOST} to be ready..."
-            sleep 2
-        done
-    done
-    echo "RUN.SH: All hosts are resolvable. Synchronization complete."
-
-    python /app/main.py
-
----
-# 3. The JobSet
 apiVersion: jobset.x-k8s.io/v1alpha2
 kind: JobSet
 metadata:
   name: multislice-job
+  annotations:
+    alpha.jobset.sigs.k8s.io/exclusive-topology: cloud.google.com/gke-nodepool
 spec:
   failurePolicy:
     maxRestarts: 4
-  network:
-    enableDNSHostnames: true
-    subdomain: multislice-job-svc
   replicatedJobs:
     - name: slice
-      replicas: 2
+      replicas: 1
       template:
         spec:
-          parallelism: 1
-          completions: 1
+          parallelism: 4
+          completions: 4
           backoffLimit: 0
           template:
-            metadata:
-              labels:
-                app: multislice-job-pod
             spec:
+              hostNetwork: true
+              dnsPolicy: ClusterFirstWithHostNet
               nodeSelector:
-                cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
-                cloud.google.com/gke-tpu-topology: 2x4
-              volumes:
-              - name: jax-script-volume
-                configMap:
-                  name: jax-script-config
+                cloud.google.com/gke-tpu-accelerator: tpu-v5-lite-podslice
+                cloud.google.com/gke-tpu-topology: 4x4
               containers:
               - name: jax-tpu
                 image: python:3.10
-                volumeMounts:
-                - name: jax-script-volume
-                  mountPath: /app
-                env:
-                - name: JOBSET_NAME
-                  value: "multislice-job"
-                - name: JOBSET_SUBDOMAIN
-                  value: "multislice-job-svc"
-                - name: COORDINATOR_PORT
-                  value: "8471"
-                - name: REPLICAS
-                  value: "2"
-                command: ["/bin/bash", "/app/run.sh"]
+                ports:
+                - containerPort: 8471
+                - containerPort: 8080
+                - containerPort: 8431
+                securityContext:
+                  privileged: true
+                command:
+                - bash
+                - -c
+                - |
+                  pip install "jax[tpu]" -f https://storage.googleapis.com/jax-releases/libtpu_releases.html
+                  python -c 'import jax; print("Global device count:", jax.device_count())'
+                  sleep 60
                 resources:
                   limits:
                     google.com/tpu: 4
-                    memory: "16Gi"
-                  requests:
-                    google.com/tpu: 4
-                    memory: "16Gi"
