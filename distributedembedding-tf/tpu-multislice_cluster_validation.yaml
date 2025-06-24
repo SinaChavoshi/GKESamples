@@ -23,15 +23,25 @@ spec:
                 cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
                 cloud.google.com/gke-tpu-topology: 4x4
               containers:
-              - name: keras-rs-training
-                # Use the image you just built and pushed
-                image: us-east5-docker.pkg.dev/chavoshi-gke-dev/tpu-poc-apps/embedding-poc:latest
+              - name: jax-tpu
+                image: python:3.10
                 ports:
                 - containerPort: 8471
                 - containerPort: 8080
                 - containerPort: 8431
                 securityContext:
                   privileged: true
+                # MODIFIED COMMAND BLOCK
+                command:
+                - bash
+                - -c
+                - |
+                  echo "--- JobSet/GKE Environment Variables for Distributed Config ---"
+                  # This variable is injected by GKE for TPU Pod Slices
+                  echo "List of all worker hostnames (from TPU_WORKER_HOSTNAMES): $TPU_WORKER_HOSTNAMES"
+                  # This variable is injected by the Job controller
+                  echo "My Pod Index (from JOB_COMPLETION_INDEX): $JOB_COMPLETION_INDEX"
+                  sleep 60
                 resources:
                   limits:
                     google.com/tpu: 4

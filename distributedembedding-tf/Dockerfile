@@ -1,5 +1,5 @@
-# Use an official TensorFlow base image
-FROM tensorflow/tensorflow:latest
+# Use a standard Python 3.10 image as the base
+FROM python:3.10
 
 # Set the working directory inside the container
 WORKDIR /app
@@ -10,8 +10,8 @@ COPY requirements.txt .
 # Install the Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the training script into the container
-COPY main.py .
+# Copy your training script into the container
+COPY train.py .
 
-# Command to run when the container starts
-CMD ["python", "main.py"]
+# Set the command to run when the container starts
+CMD ["python", "train.py"]

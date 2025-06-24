@@ -1,4 +1,6 @@
-keras
-keras-rs
-tensorflow-tpu
+absl-py
+jax[tpu]
+tensorflow
 tensorflow-datasets
+keras==3.4.1
+keras-rs==0.2.1
