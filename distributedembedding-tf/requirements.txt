@@ -2,5 +2,5 @@ absl-py
 jax[tpu]
 tensorflow
 tensorflow-datasets
-keras==3.4.1
+keras=3.10.0
 keras-rs==0.2.1
