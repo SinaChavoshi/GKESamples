@@ -20,7 +20,7 @@ spec:
               hostNetwork: true
               dnsPolicy: ClusterFirstWithHostNet
               nodeSelector:
-                cloud.google.com/gke-tpu-accelerator: tpu-v5-lite-podslice
+                cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
                 cloud.google.com/gke-tpu-topology: 4x4
               containers:
               - name: jax-tpu
@@ -31,12 +31,16 @@ spec:
                 - containerPort: 8431
                 securityContext:
                   privileged: true
+                # MODIFIED COMMAND BLOCK
                 command:
                 - bash
                 - -c
                 - |
-                  pip install "jax[tpu]" -f https://storage.googleapis.com/jax-releases/libtpu_releases.html
-                  python -c 'import jax; print("Global device count:", jax.device_count())'
+                  echo "--- JobSet/GKE Environment Variables for Distributed Config ---"
+                  # This variable is injected by GKE for TPU Pod Slices
+                  echo "List of all worker hostnames (from TPU_WORKER_HOSTNAMES): $TPU_WORKER_HOSTNAMES"
+                  # This variable is injected by the Job controller
+                  echo "My Pod Index (from JOB_COMPLETION_INDEX): $JOB_COMPLETION_INDEX"
                   sleep 60
                 resources:
                   limits:
