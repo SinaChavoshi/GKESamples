@@ -1,4 +1,4 @@
 keras
 keras-rs
-tensorflow
+tensorflow-tpu
 tensorflow-datasets
