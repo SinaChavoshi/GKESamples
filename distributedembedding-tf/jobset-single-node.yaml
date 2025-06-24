@@ -1,0 +1,43 @@
+# jobset-single-node.yaml
+apiVersion: jobset.x-k8s.io/v1alpha2
+kind: JobSet
+metadata:
+  # Renamed to reflect single-node execution
+  name: singlenode-job
+  annotations:
+    # This annotation is good practice to ensure consistent node types
+    alpha.jobset.sigs.k8s.io/exclusive-topology: cloud.google.com/gke-nodepool
+spec:
+  failurePolicy:
+    maxRestarts: 4
+  replicatedJobs:
+    - name: worker # Renamed from "slice" for clarity
+      replicas: 1
+      template:
+        spec:
+          # Parallelism and completions are set to 1 for a single pod
+          parallelism: 1
+          completions: 1
+          backoffLimit: 0
+          template:
+            spec:
+              # These settings are often required for JAX/TPU networking
+              hostNetwork: true
+              dnsPolicy: ClusterFirstWithHostNet
+              # Updated nodeSelector to target a single TPU VM with 4 chips
+              nodeSelector:
+                cloud.google.com/gke-tpu-accelerator: tpu-v5-lite-podslice
+                cloud.google.com/gke-tpu-topology: 2x2
+              containers:
+              - name: keras-rs-training
+                image: us-east5-docker.pkg.dev/chavoshi-gke-dev/tpu-repo/embedding-poc:latest
+                ports:
+                - containerPort: 8471
+                - containerPort: 8080
+                - containerPort: 8431
+                securityContext:
+                  privileged: true
+                # The resource request matches the selected 4-chip node type
+                resources:
+                  limits:
+                    google.com/tpu: 4

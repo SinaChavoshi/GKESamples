@@ -71,8 +71,6 @@ def main(argv: Sequence[str]) -> None:
   print("Backend:", keras.backend.backend())
   print("Keras version:", keras.__version__)
   print("Keras RS version:", keras_rs.__version__)
-  print(f"Total Hosts: {jax.process_count()}, My Host ID: {jax.process_index()}")
-
 
   # Ratings data.
   # tfds.load("movielens/100k-ratings", split="train")
