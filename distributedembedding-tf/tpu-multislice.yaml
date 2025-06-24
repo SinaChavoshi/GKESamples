@@ -24,8 +24,7 @@ spec:
                 cloud.google.com/gke-tpu-topology: 4x4
               containers:
               - name: keras-rs-training
-                # Use the image you just built and pushed
-                image: us-east5-docker.pkg.dev/chavoshi-gke-dev/tpu-poc-apps/embedding-poc:latest
+                image: us-east5-docker.pkg.dev/chavoshi-gke-dev/tpu-repo/embedding-poc:latest
                 ports:
                 - containerPort: 8471
                 - containerPort: 8080
