@@ -4,6 +4,6 @@ docker build -t $IMAGE_NAME .
 docker push $IMAGE_NAME
 kubectl delete jobset multislice-job
 kubectl delete jobset single-node
-#kubectl apply -f tpu-multislice.yaml
-kubectl apply -f jobset-single-node
+kubectl apply -f tpu-multislice.yaml
+# kubectl apply -f single-node.yaml 
 kubectl get pods -w

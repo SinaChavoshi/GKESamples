@@ -12,8 +12,8 @@ spec:
       replicas: 1
       template:
         spec:
-          parallelism: 4
-          completions: 4
+          parallelism: 1
+          completions: 1
           backoffLimit: 0
           template:
             spec:
@@ -21,7 +21,7 @@ spec:
               dnsPolicy: ClusterFirstWithHostNet
               nodeSelector:
                 cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
-                cloud.google.com/gke-tpu-topology: 4x4
+                cloud.google.com/gke-tpu-topology: 2x2
               containers:
               - name: keras-rs-training
                 image: us-east5-docker.pkg.dev/chavoshi-gke-dev/tpu-repo/embedding-poc:latest
