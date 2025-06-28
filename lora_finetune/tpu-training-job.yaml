@@ -25,11 +25,8 @@ spec:
             google.com/tpu: 4 # Requesting 4 TPU v6 chips
         securityContext:
           privileged: true
-          hostNetwork: true
-          dnsPolicy: ClusterFirstWithHostNet
-          nodeSelector:
-            cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
-            cloud.google.com/gke-tpu-topology: 2x2
+      nodeSelector:
+          cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
+          cloud.google.com/gke-tpu-topology: 2x2
       restartPolicy: Never
   backoffLimit: 1
-
