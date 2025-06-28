@@ -7,19 +7,24 @@ from peft import LoraConfig, get_peft_model
 from trl import SFTTrainer
 
 def main(args):
+    # Get the Hugging Face token from an environment variable
+    hf_token = os.getenv("HUGGING_FACE_HUB_TOKEN")
+    if not hf_token:
+        raise ValueError("Hugging Face token not found in environment variable HUGGING_FACE_HUB_TOKEN")
+
     # Load dataset from GCS
     dataset = load_dataset("json", data_files=args.dataset_path, split="train")
 
-    # Load model and tokenizer
+    # Load model and tokenizer, passing the token for authentication
     # Note: Using bfloat16 for TPU compatibility
     model = transformers.AutoModelForCausalLM.from_pretrained(
         args.model_id,
         torch_dtype=torch.bfloat16,
-        use_auth_token=True,
+        token=hf_token,
     )
     tokenizer = transformers.AutoTokenizer.from_pretrained(
         args.model_id,
-        use_auth_token=True,
+        token=hf_token,
     )
     tokenizer.pad_token = tokenizer.eos_token
 
@@ -72,7 +77,8 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model_id", type=str, default="meta-llama/Llama-3-8B-Instruct", help="The model ID from Hugging Face.")
+    # Corrected the default model ID
+    parser.add_argument("--model_id", type=str, default="meta-llama/Llama-3.1-8B-Instruct", help="The model ID from Hugging Face.")
     parser.add_argument("--dataset_path", type=str, required=True, help="The GCS path to the training_data.jsonl file.")
     parser.add_argument("--output_dir", type=str, required=True, help="The GCS path to save the output adapter.")
     args = parser.parse_args()

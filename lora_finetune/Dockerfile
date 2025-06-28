@@ -1,15 +1,27 @@
-# Use a PyTorch base image
-FROM pytorch/pytorch:2.2.0-cuda12.1-cudnn8-runtime
+# Use a PyTorch CPU base image, as TPUs do not use CUDA.
+FROM us-central1-docker.pkg.dev/tpu-pytorch-releases/docker/xla:r2.5.1_3.10_tpuvm
+
+# Versions
+ARG OPTIMUM_TPU='0.2.3'
+ARG TRANSFORMERS='4.46.3'
+ARG PEFT='0.13.2'
+ARG TRL='0.12.1'
+ARG DATASETS='3.1.0'
+ARG ACCELERATE='1.1.0'
+ARG EVALUATE='0.4.3'
+ARG SAFETENSORS='0.4.5'
 
 # Install dependencies
-RUN pip install --no-cache-dir    "transformers"
-RUN pip install --no-cache-dir    "peft"
-RUN pip install --no-cache-dir    "trl"
-RUN pip install --no-cache-dir    "datasets"
-RUN pip install --no-cache-dir    "bitsandbytes"
-RUN pip install --no-cache-dir    "accelerate"
-RUN pip install --no-cache-dir    torch_xla[tpu]~=2.2.0 --extra-index-url https://storage.googleapis.com/pytorch-xla-releases/wheels
-RUN pip install torch~=2.2.0 torch_xla~=2.2.0 -f https://storage.googleapis.com/pytorch-xla-releases/wheels/tpuvm/torch_xla-2.2-cp310-cp310-linux_x86_64.whl
+RUN pip install --upgrade --no-cache-dir pip
+RUN pip install --upgrade --no-cache-dir transformers[sklearn,sentencepiece]==${TRANSFORMERS}
+RUN pip install --upgrade --no-cache-dir datasets==${DATASETS}
+RUN pip install --upgrade --no-cache-dir accelerate==${ACCELERATE}
+RUN pip install --upgrade --no-cache-dir evaluate==${EVALUATE}
+RUN pip install --upgrade --no-cache-dir peft==${PEFT}
+RUN pip install --upgrade --no-cache-dir trl==${TRL}
+RUN pip install --upgrade --no-cache-dir safetensors==${SAFETENSORS}
+RUN pip install --upgrade --no-cache-dir optimum-tpu==${OPTIMUM_TPU}
+RUN pip install --upgrade --no-cache-dir gcsfs
 
 # Set a working directory
 WORKDIR /app
