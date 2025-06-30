@@ -13,7 +13,7 @@ spec:
       serviceAccountName: tpu-training-sa
       containers:
       - name: training-container
-        image: us-east5-docker.pkg.dev/chavoshi-gke-dev/tpu-repo/tpu-lora-trainer-jax:v1
+        image: us-east5-docker.pkg.dev/chavoshi-gke-dev/tpu-repo/tpu-lora-trainer-jax:v3
         env:
         - name: HUGGING_FACE_HUB_TOKEN
           valueFrom:
@@ -29,7 +29,7 @@ spec:
         ]
         resources:
           limits:
-            google.com/tpu: 16
+            google.com/tpu: 4
         securityContext:
           privileged: true
       nodeSelector:
