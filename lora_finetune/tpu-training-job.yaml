@@ -8,7 +8,7 @@ spec:
       serviceAccountName: tpu-training-sa
       containers:
       - name: training-container
-        image: us-east5-docker.pkg.dev/chavoshi-gke-dev/tpu-repo/tpu-lora-trainer:v16
+        image: us-east5-docker.pkg.dev/chavoshi-gke-dev/tpu-repo/tpu-lora-trainer:v17
         env:
         - name: HUGGING_FACE_HUB_TOKEN
           valueFrom:
@@ -21,8 +21,8 @@ spec:
           "--",
           "python",
           "train.py",
-          "--dataset_path", "gs://lora-finetuning-data-chavoshi-gke-dev/processed_data", # <-- Replace with your BUCKET_NAME
-          "--output_dir", "gs://lora-finetuning-data-chavoshi-gke-dev/output" # <-- Replace with your BUCKET_NAME
+          "--dataset_path", "gs://your-bucket-name/processed_data", # <-- Replace with your BUCKET_NAME
+          "--output_dir", "gs://your-bucket-name/output" # <-- Replace with your BUCKET_NAME
         ]
         resources:
           limits:
