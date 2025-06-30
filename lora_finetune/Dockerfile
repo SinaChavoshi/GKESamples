@@ -3,7 +3,7 @@
 FROM us-central1-docker.pkg.dev/tpu-pytorch-releases/docker/xla:r2.5.1_3.10_tpuvm
 
 # Install your application dependencies
-RUN pip install --update "pip"
+RUN pip install --upgrade "pip"
 RUN pip install --no-cache-dir "transformers>=4.43.1"
 RUN pip install --no-cache-dir "peft==0.11.1"
 RUN pip install --no-cache-dir "trl==0.9.4"
