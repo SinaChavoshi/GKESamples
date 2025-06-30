@@ -2,7 +2,7 @@ import argparse
 import os
 import torch
 import transformers
-from datasets import load_dataset
+from datasets import load_from_disk
 from peft import LoraConfig, get_peft_model
 from trl import SFTTrainer
 
@@ -12,12 +12,13 @@ def main(args):
     if not hf_token:
         raise ValueError("Hugging Face token not found in environment variable HUGGING_FACE_HUB_TOKEN")
 
-    print("Loading dataset from GCS...")
-    dataset = load_dataset("json", data_files=args.dataset_path, split="train")
+    print("Loading pre-processed dataset from GCS...")
+    # Load the tokenized dataset directly from the saved directory
+    processed_dataset = load_from_disk(args.dataset_path)
     print("Dataset loaded successfully.")
 
     print(f"Loading base model: {args.model_id}")
-    # Load model and tokenizer, passing the token for authentication
+    # Load model and tokenizer
     model = transformers.AutoModelForCausalLM.from_pretrained(
         args.model_id,
         torch_dtype=torch.bfloat16,
@@ -58,16 +59,14 @@ def main(args):
     )
 
     print("Initializing SFTTrainer...")
-    # Initialize the SFTTrainer with parameters passed directly
+    # Initialize the SFTTrainer with the pre-tokenized dataset
     trainer = SFTTrainer(
         model=model,
         args=training_args,
-        train_dataset=dataset,
+        train_dataset=processed_dataset, # Pass the processed dataset
         peft_config=lora_config,
-        dataset_text_field="text",
-        max_seq_length=1024,
         tokenizer=tokenizer,
-        packing=True,
+        # No need for packing or max_seq_length, it's already done
     )
     print("SFTTrainer initialized successfully.")
 
@@ -85,7 +84,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_id", type=str, default="meta-llama/Llama-3.1-8B-Instruct", help="The model ID from Hugging Face.")
-    parser.add_argument("--dataset_path", type=str, required=True, help="The GCS path to the training_data.jsonl file.")
+    parser.add_argument("--dataset_path", type=str, required=True, help="The GCS path to the *processed* dataset directory.")
     parser.add_argument("--output_dir", type=str, required=True, help="The GCS path to save the output adapter.")
     args = parser.parse_args()
     main(args)

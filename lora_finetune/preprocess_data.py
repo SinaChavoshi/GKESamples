@@ -11,6 +11,8 @@ def main(args):
 
     # Load the tokenizer
     tokenizer = AutoTokenizer.from_pretrained(args.model_id, token=hf_token)
+    # Add the padding token
+    tokenizer.pad_token = tokenizer.eos_token
 
     # Load the raw dataset from GCS
     raw_dataset = load_dataset("json", data_files=args.input_path, split="train")

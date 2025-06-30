@@ -6,7 +6,7 @@ export BUCKET_NAME="lora-finetuning-data-${PROJECT_ID}"
 export K8S_NAMESPACE="default"
 
 # docker image build and push 
-export IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO_NAME}/tpu-lora-trainer:v7"
+export IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO_NAME}/tpu-lora-trainer:v11"
 docker build . -t ${IMAGE_URI}
 docker push ${IMAGE_URI}
 
@@ -19,3 +19,9 @@ kubectl get pods
 kubectl logs -f job/lora-finetuning-job
 
 gcloud storage ls gs://${BUCKET_NAME}/output/final_checkpoint/
+
+
+# Run data preprocessor locally
+python preprocess_data.py \
+    --input_path gs://${BUCKET_NAME}/raw_data/training_data.jsonl \
+    --output_path gs://${BUCKET_NAME}/processed_data
