@@ -5,12 +5,16 @@ import transformers
 from datasets import load_from_disk
 from peft import LoraConfig, get_peft_model
 from trl import SFTTrainer
+import torch_xla.core.xla_model as xm
 
 def main(args):
     # Get the Hugging Face token from an environment variable
     hf_token = os.getenv("HUGGING_FACE_HUB_TOKEN")
     if not hf_token:
         raise ValueError("Hugging Face token not found in environment variable HUGGING_FACE_HUB_TOKEN")
+
+    # Get the XLA device
+    device = xm.xla_device()
 
     print("Loading pre-processed dataset from GCS...")
     processed_dataset = load_from_disk(args.dataset_path)
@@ -21,10 +25,12 @@ def main(args):
         args.model_id,
         torch_dtype=torch.bfloat16,
         token=hf_token,
-    )
+        trust_remote_code=True  # Added for compatibility with newer models
+    ).to(device)
     tokenizer = transformers.AutoTokenizer.from_pretrained(
         args.model_id,
         token=hf_token,
+        trust_remote_code=True
     )
     tokenizer.pad_token = tokenizer.eos_token
     print("Base model and tokenizer loaded successfully.")
