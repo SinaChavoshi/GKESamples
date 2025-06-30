@@ -13,12 +13,10 @@ def main(args):
         raise ValueError("Hugging Face token not found in environment variable HUGGING_FACE_HUB_TOKEN")
 
     print("Loading pre-processed dataset from GCS...")
-    # Load the tokenized dataset directly from the saved directory
     processed_dataset = load_from_disk(args.dataset_path)
     print("Dataset loaded successfully.")
 
     print(f"Loading base model: {args.model_id}")
-    # Load model and tokenizer
     model = transformers.AutoModelForCausalLM.from_pretrained(
         args.model_id,
         torch_dtype=torch.bfloat16,
@@ -31,7 +29,6 @@ def main(args):
     tokenizer.pad_token = tokenizer.eos_token
     print("Base model and tokenizer loaded successfully.")
 
-    # LoRA configuration
     lora_config = LoraConfig(
         r=8,
         lora_alpha=32,
@@ -39,12 +36,9 @@ def main(args):
         target_modules=["q_proj", "o_proj", "k_proj", "v_proj", "gate_proj", "up_proj", "down_proj"],
         task_type="CAUSAL_LM",
     )
-
-    # Add LoRA adapters to the model
     model = get_peft_model(model, lora_config)
     print("LoRA adapters added to the model.")
 
-    # Define training arguments
     training_args = transformers.TrainingArguments(
         output_dir=args.output_dir,
         per_device_train_batch_size=4,
@@ -53,29 +47,25 @@ def main(args):
         logging_steps=10,
         num_train_epochs=3,
         save_strategy="epoch",
-        bf16=True, # Use bfloat16 for TPUs
+        bf16=True,
         push_to_hub=False,
         report_to="none",
     )
 
     print("Initializing SFTTrainer...")
-    # Initialize the SFTTrainer with the pre-tokenized dataset
     trainer = SFTTrainer(
         model=model,
         args=training_args,
-        train_dataset=processed_dataset, # Pass the processed dataset
+        train_dataset=processed_dataset,
         peft_config=lora_config,
         tokenizer=tokenizer,
-        # No need for packing or max_seq_length, it's already done
     )
     print("SFTTrainer initialized successfully.")
 
-    # Start training
     print("Starting LoRA fine-tuning...")
     trainer.train()
     print("Training complete.")
 
-    # Save the final adapter
     final_output_dir = os.path.join(args.output_dir, "final_checkpoint")
     print(f"Saving final adapter to {final_output_dir}...")
     trainer.save_model(final_output_dir)

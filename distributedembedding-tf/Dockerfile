@@ -1,31 +1,26 @@
-# Use a specific, smaller base image
-FROM python:3.10-slim
+# Use a specific, stable PyTorch CPU base image.
+FROM pytorch/pytorch:2.2.1-cpu-py3
 
-# Set the working directory
+# Install dependencies in separate layers for better caching
+RUN pip install --no-cache-dir "transformers==4.41.2"
+RUN pip install --no-cache-dir "peft==0.11.1"
+RUN pip install --no-cache-dir "trl==0.9.4"
+RUN pip install --no-cache-dir "datasets==2.19.1"
+RUN pip install --no-cache-dir "bitsandbytes==0.43.1"
+RUN pip install --no-cache-dir "accelerate==0.30.1"
+RUN pip install --no-cache-dir "gcsfs"
+RUN pip install --no-cache-dir "pyarrow"
+
+# Now, install PyTorch/XLA for TPU support. This is the last layer,
+# as it's the least likely to change.
+RUN pip install --no-cache-dir torch~=2.2.0 torch_xla~=2.2.0 -f https://storage.googleapis.com/pytorch-xla-releases/wheels/tpuvm/torch_xla-2.2-cp310-cp310-linux_x86_64.whl
+
+# Set a working directory
 WORKDIR /app
 
-# Upgrade pip
-RUN pip install --upgrade pip
+# Copy the training script into the container
+COPY train.py .
 
-# Install each dependency in its own layer.
-# This creates more layers but allows Docker to cache each installation
-# separately. The --no-cache-dir flag is used to keep image size down.
-
-# Install standard Python packages
-RUN pip install --no-cache-dir absl-py
-RUN pip install --no-cache-dir tensorflow
-RUN pip install --no-cache-dir tensorflow-datasets
-RUN pip install --no-cache-dir "keras==3.10.0"
-RUN pip install --no-cache-dir "keras-rs==0.2.1"
-
-# Install JAX dependencies with the specific TPU release URL
-RUN pip install --no-cache-dir "jax[tpu]" -f https://storage.googleapis.com/jax-releases/libtpu_releases.html
-RUN pip install --no-cache-dir jax-tpu-embedding -f https://storage.googleapis.com/jax-releases/libtpu_releases.html
-
-
-# Copy your application code.
-# This is the part that changes most often.
-COPY train_jax.py .
-
-# Set the command to run when the container starts
-CMD ["python", "train_jax.py"]
+# Use the full path to xla_dist as the entrypoint to ensure it's found.
+# The command and args will be provided in the Kubernetes Job manifest.
+ENTRYPOINT ["/usr/local/bin/xla_dist"]
