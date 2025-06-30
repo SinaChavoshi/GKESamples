@@ -6,7 +6,7 @@ export BUCKET_NAME="lora-finetuning-data-${PROJECT_ID}"
 export K8S_NAMESPACE="default"
 
 # docker image build and push 
-export IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO_NAME}/tpu-lora-trainer:v22"
+export IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO_NAME}/tpu-lora-trainer-jax:v1"
 docker build . -t ${IMAGE_URI}
 docker push ${IMAGE_URI}
 
