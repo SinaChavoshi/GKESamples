@@ -8,21 +8,17 @@ spec:
       serviceAccountName: tpu-training-sa
       containers:
       - name: training-container
-        image: us-east5-docker.pkg.dev/chavoshi-gke-dev/tpu-repo/tpu-lora-trainer:v17
+        image: us-east5-docker.pkg.dev/chavoshi-gke-dev/tpu-repo/tpu-lora-trainer:v19
         env:
         - name: HUGGING_FACE_HUB_TOKEN
           valueFrom:
             secretKeyRef:
               name: hf-secret
               key: token
-        command: ["xla_dist"]
+        command: ["python", "train.py"]
         args: [
-          "--num-gpus=4", # Corresponds to the number of TPU chips
-          "--",
-          "python",
-          "train.py",
-          "--dataset_path", "gs://your-bucket-name/processed_data", # <-- Replace with your BUCKET_NAME
-          "--output_dir", "gs://your-bucket-name/output" # <-- Replace with your BUCKET_NAME
+          "--dataset_path", "gs://lora-finetuning-data-chavoshi-gke-dev/processed_data",
+          "--output_dir", "gs://lora-finetuning-data-chavoshi-gke-dev/output"
         ]
         resources:
           limits:
