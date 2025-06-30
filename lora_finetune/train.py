@@ -12,11 +12,12 @@ def main(args):
     if not hf_token:
         raise ValueError("Hugging Face token not found in environment variable HUGGING_FACE_HUB_TOKEN")
 
-    # Load dataset from GCS
+    print("Loading dataset from GCS...")
     dataset = load_dataset("json", data_files=args.dataset_path, split="train")
+    print("Dataset loaded successfully.")
 
+    print(f"Loading base model: {args.model_id}")
     # Load model and tokenizer, passing the token for authentication
-    # Note: Using bfloat16 for TPU compatibility
     model = transformers.AutoModelForCausalLM.from_pretrained(
         args.model_id,
         torch_dtype=torch.bfloat16,
@@ -27,6 +28,7 @@ def main(args):
         token=hf_token,
     )
     tokenizer.pad_token = tokenizer.eos_token
+    print("Base model and tokenizer loaded successfully.")
 
     # LoRA configuration
     lora_config = LoraConfig(
@@ -39,6 +41,7 @@ def main(args):
 
     # Add LoRA adapters to the model
     model = get_peft_model(model, lora_config)
+    print("LoRA adapters added to the model.")
 
     # Define training arguments
     training_args = transformers.TrainingArguments(
@@ -51,19 +54,22 @@ def main(args):
         save_strategy="epoch",
         bf16=True, # Use bfloat16 for TPUs
         push_to_hub=False,
+        report_to="none",
     )
 
-    # Initialize the SFTTrainer
+    print("Initializing SFTTrainer...")
+    # Initialize the SFTTrainer with parameters passed directly
     trainer = SFTTrainer(
         model=model,
         args=training_args,
         train_dataset=dataset,
+        peft_config=lora_config,
         dataset_text_field="text",
         max_seq_length=1024,
         tokenizer=tokenizer,
         packing=True,
-        peft_config=lora_config,
     )
+    print("SFTTrainer initialized successfully.")
 
     # Start training
     print("Starting LoRA fine-tuning...")
@@ -72,12 +78,12 @@ def main(args):
 
     # Save the final adapter
     final_output_dir = os.path.join(args.output_dir, "final_checkpoint")
+    print(f"Saving final adapter to {final_output_dir}...")
     trainer.save_model(final_output_dir)
-    print(f"LoRA adapter saved to {final_output_dir}")
+    print(f"LoRA adapter saved successfully.")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    # Corrected the default model ID
     parser.add_argument("--model_id", type=str, default="meta-llama/Llama-3.1-8B-Instruct", help="The model ID from Hugging Face.")
     parser.add_argument("--dataset_path", type=str, required=True, help="The GCS path to the training_data.jsonl file.")
     parser.add_argument("--output_dir", type=str, required=True, help="The GCS path to save the output adapter.")
