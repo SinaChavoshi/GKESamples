@@ -7,7 +7,7 @@ export K8S_NAMESPACE="default"
 export JOB_NAME="lora-finetuning-job-jax-4x4"
 
 # docker image build and push 
-export IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO_NAME}/tpu-lora-trainer-jax:v3"
+export IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO_NAME}/tpu-lora-trainer-jax:v4"
 docker build . -t ${IMAGE_URI}
 docker push ${IMAGE_URI}
 

@@ -13,7 +13,7 @@ spec:
       serviceAccountName: tpu-training-sa
       containers:
       - name: training-container
-        image: us-east5-docker.pkg.dev/chavoshi-gke-dev/tpu-repo/tpu-lora-trainer-jax:v3
+        image: us-east5-docker.pkg.dev/chavoshi-gke-dev/tpu-repo/tpu-lora-trainer-jax:v4
         env:
         - name: HUGGING_FACE_HUB_TOKEN
           valueFrom:
@@ -33,7 +33,8 @@ spec:
         securityContext:
           privileged: true
       nodeSelector:
+      nodeSelector:
         cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
-        cloud.google.com/gke-tpu-topology: 4x4
+        cloud.google.com/gke-tpu-topology: 2x2
       restartPolicy: Never
   backoffLimit: 1
