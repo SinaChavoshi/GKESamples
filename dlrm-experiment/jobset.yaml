@@ -17,7 +17,7 @@ spec:
               cloud.google.com/gke-tpu-topology: 2x2
             containers:
             - name: dlrm-training-container
-              image: us-east5-docker.pkg.dev/chavoshi-gke-dev/tpu-repo/dlrm-jax:latest
+              image: us-east5-docker.pkg.dev/chavoshi-gke-dev/tpu-repo/dlrm-jax:v3
               resources:
                 limits:
                   google.com/tpu: 4

@@ -1,24 +1,22 @@
-# Dockerfile
-# Use a base image that is compatible with JAX and TPUs
-FROM python:3.10-slim
+# Use an official Google Cloud JAX base image
+FROM python:3.12-slim
 
 # Set the working directory inside the container
 WORKDIR /app
 
-# Upgrade pip to the latest version
+# Upgrade pip and install your specific dependencies
+# The base image already has JAX, numpy, tensorflow, etc.
 RUN pip install --no-cache-dir --upgrade pip
-
-# Install dependencies one by one
 RUN pip install --no-cache-dir absl-py
 RUN pip install --no-cache-dir etils
 RUN pip install --no-cache-dir fiddle
 RUN pip install --no-cache-dir flax
-RUN pip install --no-cache-dir numpy
 RUN pip install --no-cache-dir optax
-RUN pip install --no-cache-dir tensorflow
+RUN pip install --no-cache-dir recml
+RUN pip install --no-cache-dir jax[tpu]
+RUN pip install --no-cache-dir jaxtyping
 
-# Install JAX for Google Cloud TPU using the specific release URL
-RUN pip install --no-cache-dir --find-links https://storage.googleapis.com/jax-releases/libtpu_releases.html jax[tpu]
+
 
 # Copy your application code into the container
 COPY dlrm_experiment.py .
