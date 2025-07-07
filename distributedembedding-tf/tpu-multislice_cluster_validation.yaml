@@ -1,0 +1,47 @@
+apiVersion: jobset.x-k8s.io/v1alpha2
+kind: JobSet
+metadata:
+  name: multislice-job
+  annotations:
+    alpha.jobset.sigs.k8s.io/exclusive-topology: cloud.google.com/gke-nodepool
+spec:
+  failurePolicy:
+    maxRestarts: 4
+  replicatedJobs:
+    - name: slice
+      replicas: 1
+      template:
+        spec:
+          parallelism: 4
+          completions: 4
+          backoffLimit: 0
+          template:
+            spec:
+              hostNetwork: true
+              dnsPolicy: ClusterFirstWithHostNet
+              nodeSelector:
+                cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
+                cloud.google.com/gke-tpu-topology: 4x4
+              containers:
+              - name: jax-tpu
+                image: python:3.10
+                ports:
+                - containerPort: 8471
+                - containerPort: 8080
+                - containerPort: 8431
+                securityContext:
+                  privileged: true
+                # MODIFIED COMMAND BLOCK
+                command:
+                - bash
+                - -c
+                - |
+                  echo "--- JobSet/GKE Environment Variables for Distributed Config ---"
+                  # This variable is injected by GKE for TPU Pod Slices
+                  echo "List of all worker hostnames (from TPU_WORKER_HOSTNAMES): $TPU_WORKER_HOSTNAMES"
+                  # This variable is injected by the Job controller
+                  echo "My Pod Index (from JOB_COMPLETION_INDEX): $JOB_COMPLETION_INDEX"
+                  sleep 60
+                resources:
+                  limits:
+                    google.com/tpu: 4

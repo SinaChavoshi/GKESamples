@@ -1,0 +1,36 @@
+apiVersion: jobset.x-k8s.io/v1alpha2
+kind: JobSet
+metadata:
+  name: multislice-job
+  annotations:
+    alpha.jobset.sigs.k8s.io/exclusive-topology: cloud.google.com/gke-nodepool
+spec:
+  failurePolicy:
+    maxRestarts: 4
+  replicatedJobs:
+    - name: slice
+      replicas: 1
+      template:
+        spec:
+          parallelism: 1
+          completions: 1
+          backoffLimit: 0
+          template:
+            spec:
+              hostNetwork: true
+              dnsPolicy: ClusterFirstWithHostNet
+              nodeSelector:
+                cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
+                cloud.google.com/gke-tpu-topology: 2x2
+              containers:
+              - name: keras-rs-training
+                image: us-east5-docker.pkg.dev/chavoshi-gke-dev/tpu-repo/embedding-poc:latest
+                ports:
+                - containerPort: 8471
+                - containerPort: 8080
+                - containerPort: 8431
+                securityContext:
+                  privileged: true
+                resources:
+                  limits:
+                    google.com/tpu: 4

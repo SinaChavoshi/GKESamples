@@ -1,0 +1,34 @@
+# rbac.yaml
+# This file defines the necessary Kubernetes permissions for the JAX job's service account
+# to discover other pods in the distributed training setup.
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: tpu-pod-reader
+  # Ensure this namespace matches the namespace of your job
+  namespace: default
+rules:
+- apiGroups: [""] # The empty string "" indicates the core Kubernetes API group
+  resources: ["pods"]
+  verbs: ["get", "list", "watch"] # Permissions needed by JAX for auto-discovery
+- apiGroups: ["batch"] # Add permission for the "batch" API group
+  resources: ["jobs"] # For the "jobs" resource
+  verbs: ["get", "list", "watch"] # To allow JAX to read the job spec
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: tpu-training-sa-pod-reader-binding
+  # Ensure this namespace matches the namespace of your job
+  namespace: default
+subjects:
+- kind: ServiceAccount
+  # This must be the service account specified in your tpu-training-job.yaml
+  name: tpu-training-sa
+  namespace: default
+roleRef:
+  # This links the RoleBinding to the Role defined above
+  kind: Role
+  name: tpu-pod-reader
+  apiGroup: rbac.authorization.k8s.io
