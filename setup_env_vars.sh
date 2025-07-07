@@ -4,10 +4,10 @@ export CLUSTER_NAME="tpu-cluster"
 export AR_REPO_NAME="tpu-repo"
 export BUCKET_NAME="lora-finetuning-data-${PROJECT_ID}"
 export K8S_NAMESPACE="default"
-export JOB_NAME="lora-finetuning-job-jax-4x4"
+export JOB_NAME="lora-finetuning-job-jax-single-node"
 
 # docker image build and push 
-export IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO_NAME}/tpu-lora-trainer-jax:v4"
+export IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO_NAME}/tpu-lora-trainer-jax:v7"
 docker build . -t ${IMAGE_URI}
 docker push ${IMAGE_URI}
 

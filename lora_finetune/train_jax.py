@@ -127,7 +127,8 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model_id", type=str, default="meta-llama/Llama-3.1-8B-Instruct")
+    # Using a pre-converted Flax model to avoid conversion errors
+    parser.add_argument("--model_id", type=str, default="benjamin/Llama-3.1-8B-Instruct-flax")
     parser.add_argument("--dataset_path", type=str, required=True)
     parser.add_argument("--output_dir", type=str, required=True)
     parser.add_argument("--learning_rate", type=float, default=2e-4)
