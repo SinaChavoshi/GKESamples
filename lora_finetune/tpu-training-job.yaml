@@ -10,15 +10,13 @@ spec:
       serviceAccountName: tpu-training-sa
       containers:
       - name: training-container
-        image: us-east5-docker.pkg.dev/chavoshi-gke-dev/tpu-repo/tpu-lora-trainer-jax:v7
+        image: us-east5-docker.pkg.dev/chavoshi-gke-dev/tpu-repo/tpu-lora-trainer-jax:latest 
         env:
         - name: HUGGING_FACE_HUB_TOKEN
           valueFrom:
             secretKeyRef:
               name: hf-secret
               key: token
-        - name: JAX_PLATFORMS
-          value: "tpu"
         command: ["python", "train_jax.py"]
         args: [
           "--dataset_path", "gs://lora-finetuning-data-chavoshi-gke-dev/processed_data",

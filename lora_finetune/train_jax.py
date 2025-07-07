@@ -39,17 +39,25 @@ def main(args):
     # Initialize JAX for multi-device environment
     jax.distributed.initialize()
     log.info(f"JAX process: {jax.process_index()} / {jax.process_count()}")
-    log.info(f"JAX local devices: {jax.local_devices()}")
+    log.info(f"JAX available devices: {jax.devices()}")
+    log.info("Setting up JAX mesh for model parallelism...")
+    devices = jax.devices()
+    mesh = Mesh(devices, axis_names=("mp",))
 
-    # --- 1. Load Tokenizer and Model ---
+    log.info("Loading tokenizer...")
     tokenizer = AutoTokenizer.from_pretrained(args.model_id, token=hf_token)
     tokenizer.pad_token = tokenizer.eos_token
 
-    model = FlaxAutoModelForCausalLM.from_pretrained(
-        args.model_id,
-        token=hf_token,
-        torch_dtype=jnp.bfloat16,
-    )
+    log.info("Loading sharded model...")
+    with mesh:
+        model_def, model_weights = FlaxAutoModelForCausalLM.from_pretrained(
+            args.model_id,
+            token=hf_token,
+            _do_init=False,
+            dtype=jnp.bfloat16, 
+        )
+        # Manually instantiate the model
+        model = model_def(model_weights)
 
     # --- 2. Apply LoRA ---
     lora_config = LoraConfig(
@@ -59,13 +67,10 @@ def main(args):
         task_type="CAUSAL_LM",
         bias="none",
     )
-    # Note: PEFT for JAX/Flax is still evolving.
-    # We get a PeftModel and then access its state for training.
     lora_model = PeftModelForCausalLM(model, lora_config)
 
     # --- 3. Load and Preprocess Dataset ---
     log.info("Loading pre-processed dataset from GCS...")
-    # Use the same preprocessed data from your PyTorch script
     processed_dataset = load_from_disk(args.dataset_path)
     log.info("Dataset loaded successfully.")
 
@@ -127,8 +132,7 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    # Switching back to the official Llama 3.1 model
-    parser.add_argument("--model_id", type=str, default="meta-llama/Llama-3.1-8B-Instruct")
+    parser.add_argument("--model_id", type=str, default="benjamin/Llama-3.1-8B-Instruct-flax")
     parser.add_argument("--dataset_path", type=str, required=True)
     parser.add_argument("--output_dir", type=str, required=True)
     parser.add_argument("--learning_rate", type=float, default=2e-4)

@@ -6,8 +6,11 @@ export BUCKET_NAME="lora-finetuning-data-${PROJECT_ID}"
 export K8S_NAMESPACE="default"
 export JOB_NAME="lora-finetuning-job-jax-single-node"
 
+# First start by deleting the current job if any
+kubectl delete job ${JOB_NAME}
+
 # docker image build and push 
-export IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO_NAME}/tpu-lora-trainer-jax:v7"
+export IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO_NAME}/tpu-lora-trainer-jax:latest"
 docker build . -t ${IMAGE_URI}
 docker push ${IMAGE_URI}
 
@@ -17,6 +20,7 @@ kubectl apply -f tpu-training-job.yaml
 
 kubectl get jobs
 kubectl get pods
+sleep 5
 kubectl logs -f job/${JOB_NAME}
 
 gcloud storage ls gs://${BUCKET_NAME}/output/final_checkpoint/
