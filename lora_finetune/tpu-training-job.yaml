@@ -1,19 +1,16 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: lora-finetuning-job-jax-4x4
+  name: lora-finetuning-job-jax-single-node
 spec:
-  # Completions and parallelism must match the number of hosts (4)
-  completions: 4
-  parallelism: 4
+  completions: 1
+  parallelism: 1
   template:
     spec:
-      # Subdomain enables pod-to-pod communication for multi-host training
-      subdomain: tpu-job
       serviceAccountName: tpu-training-sa
       containers:
       - name: training-container
-        image: us-east5-docker.pkg.dev/chavoshi-gke-dev/tpu-repo/tpu-lora-trainer-jax:v4
+        image: us-east5-docker.pkg.dev/chavoshi-gke-dev/tpu-repo/tpu-lora-trainer-jax:v5
         env:
         - name: HUGGING_FACE_HUB_TOKEN
           valueFrom:
@@ -32,7 +29,6 @@ spec:
             google.com/tpu: 4
         securityContext:
           privileged: true
-      nodeSelector:
       nodeSelector:
         cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
         cloud.google.com/gke-tpu-topology: 2x2
