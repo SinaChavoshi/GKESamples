@@ -43,21 +43,31 @@ def main(args):
     log.info("Setting up JAX mesh for model parallelism...")
     devices = jax.devices()
     mesh = Mesh(devices, axis_names=("mp",))
+    
+    # Add a version check to be sure the correct code is running
+    log.info("--- Running with JAX Mesh Sharding: V7 ---")
 
+    # --- 1. Load Tokenizer and Model ---
     log.info("Loading tokenizer...")
     tokenizer = AutoTokenizer.from_pretrained(args.model_id, token=hf_token)
     tokenizer.pad_token = tokenizer.eos_token
 
     log.info("Loading sharded model...")
+
+    # Load the model's configuration first
+    from transformers import AutoConfig
+    config = AutoConfig.from_pretrained(args.model_id, token=hf_token)
+    config.max_position_embeddings = 1024
+
+    # Now, load the model with the modified config
     with mesh:
-        model_def, model_weights = FlaxAutoModelForCausalLM.from_pretrained(
+        model = FlaxAutoModelForCausalLM.from_pretrained(
             args.model_id,
             token=hf_token,
-            _do_init=False,
-            dtype=jnp.bfloat16, 
+            config=config,
+            dtype=jnp.bfloat16,
         )
-        # Manually instantiate the model
-        model = model_def(model_weights)
+
 
     # --- 2. Apply LoRA ---
     lora_config = LoraConfig(
@@ -67,6 +77,7 @@ def main(args):
         task_type="CAUSAL_LM",
         bias="none",
     )
+    # Now that `model` is a single object, PEFT can correctly inject the adapter
     lora_model = PeftModelForCausalLM(model, lora_config)
 
     # --- 3. Load and Preprocess Dataset ---
@@ -132,7 +143,7 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model_id", type=str, default="benjamin/Llama-3.1-8B-Instruct-flax")
+    parser.add_argument("--model_id", type=str, default="Erland/Llama-3.2-1B-JAX")
     parser.add_argument("--dataset_path", type=str, required=True)
     parser.add_argument("--output_dir", type=str, required=True)
     parser.add_argument("--learning_rate", type=float, default=2e-4)
