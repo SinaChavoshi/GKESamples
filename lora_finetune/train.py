@@ -13,30 +13,42 @@
 #  limitations under the License.
 
 import argparse
-import os
 import logging
-from tqdm import tqdm
+import os
 
 import torch
-import torch_xla.core.xla_model as xm
-import torch_xla.distributed.parallel_loader as pl
-import torch_xla.distributed.xla_multiprocessing as xmp
-
-from transformers import AutoTokenizer, AutoModelForCausalLM
 from datasets import load_from_disk
-from peft import LoraConfig, get_peft_model
-from torch.utils.data import DataLoader
+from peft import LoraConfig
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+)
+# We will use SFTConfig instead of TrainingArguments
+from trl import SFTConfig, SFTTrainer
+from optimum.tpu import fsdp_v2
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def main(index, args):
+
+def main():
     """Main training function."""
-    
-    # --- 1. Initialize PyTorch/XLA for TPU training ---
-    device = xm.xla_device()
-    
+    parser = argparse.ArgumentParser(description="Fine-tune a model on GKE with TPU using Optimum TPU.")
+    parser.add_argument("--model_id", type=str, default="meta-llama/Llama-3.1-8B-Instruct", help="The model ID from Hugging Face.")
+    parser.add_argument("--dataset_path", type=str, required=True, help="The GCS path to the *processed* dataset directory.")
+    parser.add_argument("--output_dir", type=str, required=True, help="The GCS path to save the output adapter.")
+    parser.add_argument("--per_device_train_batch_size", type=int, default=16, help="Batch size per TPU core.")
+    parser.add_argument("--num_train_epochs", type=int, default=3, help="Number of training epochs.")
+    parser.add_argument("--learning_rate", type=float, default=2e-4, help="The initial learning rate.")
+    parser.add_argument("--max_seq_length", type=int, default=512, help="The maximum sequence length.")
+    args = parser.parse_args()
+
+    # --- 1. Enable FSDPv2 for model sharding ---
+    # This must be called at the beginning of the script.
+    logger.info("Enabling FSDPv2 for model sharding.")
+    fsdp_v2.use_fsdp_v2()
+
     # --- 2. Load Tokenizer and Model ---
     hf_token = os.getenv("HF_TOKEN")
     if not hf_token:
@@ -44,103 +56,74 @@ def main(index, args):
 
     logger.info(f"Loading tokenizer for model: {args.model_id}")
     tokenizer = AutoTokenizer.from_pretrained(args.model_id, token=hf_token)
-    tokenizer.pad_token = tokenizer.eos_token
-    
+    # Add a pad token if the model doesn't have one. Llama models often don't.
+    if tokenizer.pad_token is None:
+        tokenizer.add_special_tokens({'pad_token': tokenizer.eos_token})
+
     logger.info(f"Loading PyTorch model: {args.model_id}")
     model = AutoModelForCausalLM.from_pretrained(
         args.model_id,
         token=hf_token,
-        torch_dtype=torch.bfloat16 # Use bfloat16 for TPU efficiency
+        torch_dtype=torch.bfloat16,
     )
+    # The model's pad_token_id must match the tokenizer's
+    model.config.pad_token_id = tokenizer.pad_token_id
 
-    # --- 3. Configure LoRA ---
-    lora_config = LoraConfig(
-        r=8,
-        lora_alpha=32,
-        lora_dropout=0.05,
-        target_modules=["q_proj", "k_proj", "v_proj", "o_proj"], # Target modules for GPT-Neo
-        task_type="CAUSAL_LM",
-    )
-    
-    logger.info("Applying LoRA configuration to the model...")
-    model = get_peft_model(model, lora_config)
-    model.print_trainable_parameters()
-    
-    model.to(device)
-
-    # --- 4. Load Pre-processed Dataset ---
+    # --- 3. Load Preprocessed Dataset ---
     logger.info(f"Loading pre-processed dataset from GCS path: {args.dataset_path}")
     processed_dataset = load_from_disk(args.dataset_path)
     processed_dataset.set_format("torch")
-    
-    train_sampler = torch.utils.data.distributed.DistributedSampler(
-        processed_dataset,
-        num_replicas=xm.xrt_world_size(),
-        rank=xm.get_ordinal(),
-        shuffle=True
-    )
-    
-    train_dataloader = DataLoader(
-        processed_dataset,
-        batch_size=args.per_device_batch_size,
-        sampler=train_sampler,
-        num_workers=4,
-        pin_memory=True
+
+    # --- 4. Configure LoRA and FSDP ---
+    # LoRA config for PEFT
+    lora_config = LoraConfig(
+        r=256,
+        lora_alpha=128,
+        lora_dropout=0.05,
+        bias="none",
+        target_modules="all-linear", # Automatically targets all linear layers
+        task_type="CAUSAL_LM",
     )
 
-    # --- 5. Set up Optimizer ---
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
+    # Get FSDP arguments from Optimum TPU
+    fsdp_training_args = fsdp_v2.get_fsdp_training_args(model)
+    logger.info(f"FSDP Config: {fsdp_training_args}")
 
-    # --- 6. Start the Training Loop ---
+    # --- 5. Set up SFTConfig ---
+    # SFTConfig now holds all the training parameters
+    sft_config = SFTConfig(
+        output_dir=args.output_dir,
+        per_device_train_batch_size=args.per_device_train_batch_size,
+        num_train_epochs=args.num_train_epochs,
+        learning_rate=args.learning_rate,
+        logging_steps=1,
+        optim="adafactor", # Adafactor is often recommended for TPUs
+        dataloader_drop_last=True,  # Required for FSDP
+        max_seq_length=args.max_seq_length,
+        packing=True, # Packs multiple short sequences into one for efficiency
+        # Unpack FSDP config into the SFTConfig
+        **fsdp_training_args,
+    )
+
+
+    # --- 6. Set up and run the SFTTrainer ---
+    trainer = SFTTrainer(
+        model=model,
+        train_dataset=processed_dataset,
+        peft_config=lora_config,
+        args=sft_config, # Pass the SFTConfig object here
+    )
+    
+    # Disable cache for gradient checkpointing
+    model.config.use_cache = False
+
     logger.info("Starting training...")
-    
-    # Create the parallel loader
-    para_loader = pl.ParallelLoader(train_dataloader, [device])
-    
-    for epoch in range(args.num_train_epochs):
-        model.train()
-        
-        # Use tqdm only on the master process
-        if xm.is_master_ordinal():
-            pbar = tqdm(total=len(train_dataloader), desc=f"Epoch {epoch+1}/{args.num_train_epochs}")
-        
-        for batch in para_loader.per_device_loader(device):
-            # The labels are the input_ids themselves
-            batch["labels"] = batch["input_ids"]
-            
-            optimizer.zero_grad()
-            
-            outputs = model(**batch)
-            loss = outputs.loss
-            
-            loss.backward()
-            xm.optimizer_step(optimizer)
-            
-            if xm.is_master_ordinal():
-                pbar.update(1)
-                pbar.set_postfix({"loss": loss.item()})
-        
-        if xm.is_master_ordinal():
-            pbar.close()
+    trainer.train()
 
-    # --- 7. Save the Final LoRA Adapter ---
-    # Use xm.rendezvous to wait for all processes to finish before saving
-    def _save_model_fn(model, output_dir):
-        model.save_pretrained(output_dir)
+    logger.info("Training complete. Saving final LoRA adapter.")
+    trainer.save_model(args.output_dir)
+    logger.info(f"LoRA adapter saved to {args.output_dir}")
 
-    xm.rendezvous("save_model", _save_model_fn, args=(model, args.output_dir))
-    
-    if xm.is_master_ordinal():
-        logger.info(f"LoRA adapter saved to GCS path: {args.output_dir}")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--model_id", type=str, default="EleutherAI/gpt-neo-1.3B", help="The model ID from Hugging Face.")
-    parser.add_argument("--dataset_path", type=str, required=True, help="The GCS path to the *processed* dataset directory.")
-    parser.add_argument("--output_dir", type=str, required=True, help="The GCS path to save the final LoRA adapter.")
-    parser.add_argument("--learning_rate", type=float, default=2e-4, help="Peak learning rate.")
-    parser.add_argument("--per_device_batch_size", type=int, default=4, help="Batch size per TPU core.")
-    parser.add_argument("--num_train_epochs", type=int, default=3, help="Number of training epochs.")
-    
-    args = parser.parse_args()
-    xmp.spawn(main, args=(args,))
+    main()

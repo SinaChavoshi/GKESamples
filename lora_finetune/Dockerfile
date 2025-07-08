@@ -1,23 +1,21 @@
-# Use a PyTorch base image
-FROM pytorch/pytorch:2.2.0-cuda12.1-cudnn8-runtime
+FROM us-central1-docker.pkg.dev/tpu-pytorch-releases/docker/xla:r2.5.1_3.10_tpuvm
 
-# Install Python dependencies for PyTorch/XLA TPU training
+# Install the additional dependencies required by the training script
+RUN  pip install --upgrade pip
 RUN pip install --no-cache-dir \
-    "transformers>=4.38.0" \
-    "datasets" \
+    "optimum-tpu" -f https://storage.googleapis.com/libtpu-releases/index.html \
+    "trl" \
     "peft" \
+    "datasets" \
     "accelerate" \
-    "tqdm" \
-    "gcsfs" \
-    "google-cloud-storage" \
-    # Install the latest compatible torch_xla for TPU
-    "torch_xla[tpu]"
+    "evaluate" \
+    "gcsfs"
 
 # Set working directory
 WORKDIR /app
 
-# Copy your training script
+# Copy your training script into the container
 COPY train.py .
 
-# The command to run your training script
+# Define the command to run your training script
 CMD ["python", "train.py"]
