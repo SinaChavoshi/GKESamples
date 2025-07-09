@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lora-chat-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: lora-chat
+  template:
+    metadata:
+      labels:
+        app: lora-chat
+    spec:
+      containers:
+      - name: chat-container
+        image: us-east5-docker.pkg.dev/chavoshi-gke-dev/tpu-repo/lora-chat:latest
+        env:
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              # Assumes you have a secret named 'hf-secret' with a key 'token'
+              name: hf-secret 
+              key: token
+        resources:
+          limits:
+            # Request TPU resources instead of GPU
+            google.com/tpu: 4
+        securityContext:
+          # TPU pods often require privileged access
+          privileged: true
+      nodeSelector:
+        # Ensure this pod is scheduled on a TPU node
+        cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
+        cloud.google.com/gke-tpu-topology: 2x2
