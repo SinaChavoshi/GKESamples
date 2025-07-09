@@ -27,10 +27,29 @@ from transformers import (
 # We will use SFTConfig instead of TrainingArguments
 from trl import SFTConfig, SFTTrainer
 from optimum.tpu import fsdp_v2
+from google.cloud import storage
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def verify_gcs_upload(gcs_path):
+    """Verifies that files have been uploaded to a GCS path."""
+    try:
+        storage_client = storage.Client()
+        bucket_name, blob_prefix = gcs_path.replace("gs://", "").split("/", 1)
+        bucket = storage_client.bucket(bucket_name)
+        blobs = list(bucket.list_blobs(prefix=blob_prefix))
+        if blobs:
+            logger.info(f"Successfully verified that output exists in GCS at: {gcs_path}")
+            return True
+        else:
+            logger.error(f"Verification failed. No objects found in GCS at: {gcs_path}")
+            return False
+    except Exception as e:
+        logger.error(f"An error occurred during GCS verification: {e}", exc_info=True)
+        return False
 
 
 def main():
@@ -132,6 +151,9 @@ def main():
     try:
         trainer.save_model(args.output_dir)
         logger.info(f"LoRA adapter saved to {args.output_dir}")
+        # Verify that the model was saved to GCS
+        if not verify_gcs_upload(args.output_dir):
+            raise Exception("Failed to verify model upload to GCS.")
     except Exception as e:
         logger.error(f"An error occurred while saving the model: {e}", exc_info=True)
         # Keep the pod alive for a bit to allow for log inspection
@@ -145,4 +167,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

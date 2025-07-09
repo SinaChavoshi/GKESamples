@@ -9,13 +9,13 @@ RUN pip install --no-cache-dir \
     "datasets" \
     "accelerate" \
     "evaluate" \
-    "gcsfs"
+    "gcsfs" \
+    "google-cloud-storage"
 
 # Set working directory
 WORKDIR /app
 
 # Copy your training script into the container
 COPY train.py .
-
 # Define the command to run your training script
 CMD ["python", "train.py"]
