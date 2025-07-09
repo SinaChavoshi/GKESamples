@@ -8,7 +8,8 @@ spec:
       serviceAccountName: tpu-training-sa
       containers:
       - name: training-container
-        image: us-east5-docker.pkg.dev/chavoshi-gke-dev/tpu-repo/tpu-lora-trainer-jax:latest 
+        image: us-east5-docker.pkg.dev/chavoshi-gke-dev/tpu-repo/tpu-lora-trainer-jax:latest
+        imagePullPolicy: "Always"
         env:
         - name: HF_TOKEN
           valueFrom:
