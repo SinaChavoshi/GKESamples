@@ -12,24 +12,31 @@ spec:
       labels:
         app: lora-chat
     spec:
+      serviceAccountName: lora-serving-sa
       containers:
       - name: chat-container
         image: us-east5-docker.pkg.dev/chavoshi-gke-dev/tpu-repo/lora-chat:latest
+        command: ["python", "chat.py"]
+        args: [
+          "--gcs_lora_adapter_path",
+          "gs://lora-finetuning-data-chavoshi-gke-dev/trained_lora_model/checkpoint-21"
+        ]
+        tty: true
         env:
         - name: HF_TOKEN
           valueFrom:
             secretKeyRef:
-              # Assumes you have a secret named 'hf-secret' with a key 'token'
-              name: hf-secret 
+              name: hf-secret
               key: token
         resources:
           limits:
-            # Request TPU resources instead of GPU
             google.com/tpu: 4
+            memory: "64Gi" 
+          requests:
+            # And add a memory request as well
+            memory: "64Gi"
         securityContext:
-          # TPU pods often require privileged access
           privileged: true
       nodeSelector:
-        # Ensure this pod is scheduled on a TPU node
         cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
         cloud.google.com/gke-tpu-topology: 2x2

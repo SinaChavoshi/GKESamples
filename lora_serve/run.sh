@@ -6,9 +6,6 @@ export BUCKET_NAME="lora-finetuning-data-${PROJECT_ID}"
 export K8S_NAMESPACE="default"
 export JOB_NAME="lora-finetuning-job"
 
-gcloud storage cp -r gs://lora-finetuning-data-chavoshi-gke-dev/output-jax ./my-lora-adapter
-
-
 export IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO_NAME}/lora-chat:latest"
 
 docker build . -t $IMAGE_URI

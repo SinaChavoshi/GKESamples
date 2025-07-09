@@ -20,9 +20,9 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 def main():
     """Main function to run the interactive chat."""
-    parser = argparse.ArgumentParser(description="Chat with a fine-tuned LoRA model.")
+    parser = argparse.ArgumentParser(description="Chat with a fine-tuned LoRA model from GCS.")
     parser.add_argument("--base_model_id", type=str, default="meta-llama/Llama-3.1-8B-Instruct", help="The base model ID from Hugging Face.")
-    parser.add_argument("--lora_adapter_path", type=str, required=True, help="The local path to the trained LoRA adapter directory.")
+    parser.add_argument("--gcs_lora_adapter_path", type=str, required=True, help="The GCS path (gs://...) to the trained LoRA adapter directory.")
     args = parser.parse_args()
 
     # --- 1. Load Tokenizer and Base Model ---
@@ -34,8 +34,6 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(args.base_model_id, token=hf_token)
 
     print(f"Loading base model: {args.base_model_id}")
-    # Load the model in 8-bit quantization to save memory.
-    # Requires the `bitsandbytes` library.
     base_model = AutoModelForCausalLM.from_pretrained(
         args.base_model_id,
         token=hf_token,
@@ -44,11 +42,11 @@ def main():
         load_in_8bit=True,
     )
 
-    # --- 2. Load and Merge the LoRA Adapter ---
-    print(f"Loading and merging LoRA adapter from: {args.lora_adapter_path}")
-    # This merges the LoRA weights into the base model
-    model = PeftModel.from_pretrained(base_model, args.lora_adapter_path)
-    model.eval() # Set the model to evaluation mode
+    # --- 2. Load and Merge the LoRA Adapter directly from GCS ---
+    print(f"Loading and merging LoRA adapter directly from GCS path: {args.gcs_lora_adapter_path}")
+    # The from_pretrained method can handle "gs://" paths directly
+    model = PeftModel.from_pretrained(base_model, args.gcs_lora_adapter_path)
+    model.eval() 
 
     # --- 3. Start Interactive Chat Loop ---
     print("\n\nModel loaded. Start chatting! Type 'quit' or 'exit' to end the session.")
@@ -58,13 +56,10 @@ def main():
         if user_input.lower() in ["quit", "exit"]:
             break
 
-        # Format the prompt exactly like the training data
         prompt = f"### Human: {user_input} ### Assistant:"
         
-        # Tokenize the input
         inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
 
-        # Generate a response
         with torch.no_grad():
             outputs = model.generate(
                 **inputs,
@@ -75,12 +70,9 @@ def main():
                 eos_token_id=tokenizer.eos_token_id,
             )
         
-        # Decode and print the response
         response_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
-        # Clean up the output to only show the assistant's response
         assistant_response = response_text.split("### Assistant:")[-1].strip()
         print(f"### Assistant: {assistant_response}\n")
-
 
 if __name__ == "__main__":
     main()
