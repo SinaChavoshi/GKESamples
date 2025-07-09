@@ -15,6 +15,7 @@
 import argparse
 import logging
 import os
+import time
 
 import torch
 from datasets import load_from_disk
@@ -77,8 +78,8 @@ def main():
     # --- 4. Configure LoRA and FSDP ---
     # LoRA config for PEFT
     lora_config = LoraConfig(
-        r=64,
-        lora_alpha=32,
+        r=256,
+        lora_alpha=128,
         lora_dropout=0.05,
         bias="none",
         target_modules="all-linear", # Automatically targets all linear layers
@@ -118,12 +119,30 @@ def main():
     model.config.use_cache = False
 
     logger.info("Starting training...")
-    trainer.train()
+    try:
+        trainer.train()
+        logger.info("Training successfully completed.")
+    except Exception as e:
+        logger.error(f"An error occurred during training: {e}", exc_info=True)
+        # Keep the pod alive for a bit to allow for log inspection
+        time.sleep(60)
+        raise e
 
-    logger.info("Training complete. Saving final LoRA adapter.")
-    trainer.save_model(args.output_dir)
-    logger.info(f"LoRA adapter saved to {args.output_dir}")
+    logger.info("Saving final LoRA adapter.")
+    try:
+        trainer.save_model(args.output_dir)
+        logger.info(f"LoRA adapter saved to {args.output_dir}")
+    except Exception as e:
+        logger.error(f"An error occurred while saving the model: {e}", exc_info=True)
+        # Keep the pod alive for a bit to allow for log inspection
+        time.sleep(60)
+        raise e
+    
+    # Keep the pod alive for a short time to ensure GCS upload completes
+    logger.info("Waiting for 15 seconds before exiting...")
+    time.sleep(15)
 
 
 if __name__ == "__main__":
     main()
+
