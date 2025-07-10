@@ -25,16 +25,16 @@ spec:
       containers:
       - name: chat-container
         image: us-east5-docker.pkg.dev/chavoshi-gke-dev/tpu-repo/lora-chat:latest
-        command: ["python", "chat.py"]
+        # Command updated to run Python in unbuffered mode
+        command: ["python", "-u", "chat.py"]
         args: [
-          # Add the base model ID
-          "--base_model_id", "meta-llama/Llama-3.1-8B-Instruct",
-          # Point to the directory containing the adapter
-          "--lora_adapter_path", "/model/trained_lora_model"
+          "--model_path", "/gcs/trained_lora_model"
         ]
         volumeMounts:
         - name: gcs-model-volume
-          mountPath: /model
+          mountPath: /gcs
+        # Both stdin and tty are now enabled for interactive attachment
+        stdin: true
         tty: true
         env:
         - name: HF_TOKEN

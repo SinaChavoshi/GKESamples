@@ -96,12 +96,21 @@ def main():
     trainer.train()
     logger.info("Training successfully completed.")
 
-    logger.info(f"Saving final adapter to {args.output_dir}")
-    # The trainer already saved the checkpoints and final model during trainer.train()
-    # To ensure the absolute final state is saved, we can call save_model again.
-    trainer.save_model(args.output_dir)
-    logger.info(f"Final model artifacts saved to {args.output_dir}")
 
+    # Merge the adapter weights with the base model.
+    # The resulting model is still on the TPU devices.
+    merged_model = trainer.model.merge_and_unload()
+
+    logger.info("Moving merged model to CPU...")
+    merged_model = merged_model.to("cpu")
+
+    logger.info(f"Saving merged, standalone model to {args.output_dir}")
+
+    # Now that the model is on the CPU, saving will succeed.
+    merged_model.save_pretrained(args.output_dir)
+    tokenizer.save_pretrained(args.output_dir)
+
+    logger.info(f"Full model saved successfully to {args.output_dir}")
     logger.info("Job finished successfully.")
 
 if __name__ == "__main__":

@@ -16,7 +16,7 @@ kubectl apply -f deployment.yaml
 POD_NAME=$(kubectl get pods -l app=lora-chat -o jsonpath='{.items[0].metadata.name}')
 
 
-kubectl attach -i $POD_NAME
+kubectl attach -it $POD_NAME
 kubectl exec -it $POD_NAME -- /bin/bash
 
 # kubectl delete pod $POD_NAME

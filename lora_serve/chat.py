@@ -15,38 +15,33 @@
 import argparse
 import os
 import torch
-from peft import PeftModel
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 def main():
     """Main function to run the interactive chat."""
-    parser = argparse.ArgumentParser(description="Chat with a fine-tuned LoRA model.")
-    parser.add_argument("--base_model_id", type=str, default="meta-llama/Llama-3.1-8B-Instruct", help="The base model ID from Hugging Face.")
-    parser.add_argument("--lora_adapter_path", type=str, required=True, help="The local filesystem path to the trained LoRA adapter directory.")
+    parser = argparse.ArgumentParser(description="Chat with a full fine-tuned model.")
+    # The single path to the full, merged model directory
+    parser.add_argument("--model_path", type=str, required=True, help="The local filesystem path to the full model directory.")
     args = parser.parse_args()
 
-    # --- 1. Load Tokenizer and Base Model ---
+    # --- 1. Load Tokenizer and Full Model from the FUSE path ---
     hf_token = os.getenv("HF_TOKEN")
     if not hf_token:
         raise ValueError("Hugging Face token not found in environment variable HF_TOKEN")
 
-    print(f"Loading tokenizer for base model: {args.base_model_id}")
-    tokenizer = AutoTokenizer.from_pretrained(args.base_model_id, token=hf_token)
+    print(f"Loading tokenizer from local path: {args.model_path}")
+    tokenizer = AutoTokenizer.from_pretrained(args.model_path, token=hf_token)
 
-    print(f"Loading base model: {args.base_model_id}")
-    base_model = AutoModelForCausalLM.from_pretrained(
-        args.base_model_id,
+    print(f"Loading full model from local path: {args.model_path}")
+    model = AutoModelForCausalLM.from_pretrained(
+        args.model_path,
         token=hf_token,
         torch_dtype=torch.bfloat16,
         device_map="auto",
     )
-
-    # --- 2. Load and Merge the LoRA Adapter from the FUSE path ---
-    print(f"Loading and applying LoRA adapter from path: {args.lora_adapter_path}")
-    model = PeftModel.from_pretrained(base_model, args.lora_adapter_path)
     model.eval()
 
-    # --- 3. Start Interactive Chat Loop ---
+    # --- 2. Start Interactive Chat Loop ---
     print("\n\nModel loaded. Start chatting! Type 'quit' or 'exit' to end the session.")
     print("=======================================================================")
     while True:
