@@ -1,19 +1,19 @@
-FROM us-central1-docker.pkg.dev/tpu-pytorch-releases/docker/xla:r2.6.0_3.10_tpuvm_cxx11
+FROM us-central1-docker.pkg.dev/tpu-pytorch-releases/docker/xla:r2.5.1_3.10_tpuvm
 
+# Install the additional dependencies required by the training script
+RUN  pip install --upgrade pip
+RUN pip install --no-cache-dir \
+    "optimum-tpu" -f https://storage.googleapis.com/libtpu-releases/index.html \
+    "trl" \
+    "peft" \
+    "datasets" \
+    "accelerate" \
+    "evaluate"
 
-# Install dependencies for JAX-based training
-RUN pip install --upgrade pip
-RUN pip install --no-cache-dir "flax"
-RUN pip install --no-cache-dir "transformers>=4.43.1"
-RUN pip install --no-cache-dir "peft>=0.11.1"
-RUN pip install --no-cache-dir "datasets>=2.19.1"
-RUN pip install --no-cache-dir "optax"
-RUN pip install --no-cache-dir "gcsfs"
-RUN pip install --no-cache-dir "pyarrow"
-RUN pip install --no-cache-dir "jax[k8s]"
-
-# Set a working directory
+# Set working directory
 WORKDIR /app
 
-# Copy the new JAX training script into the container
-COPY train_jax.py .
+# Copy your training script into the container
+COPY train.py .
+# Define the command to run your training script
+CMD ["python", "train.py"]

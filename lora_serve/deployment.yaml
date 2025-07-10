@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lora-chat-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: lora-chat
+  template:
+    metadata:
+      annotations:
+        gke-gcsfuse/volumes: "true"
+      labels:
+        app: lora-chat
+    spec:
+      serviceAccountName: lora-serving-sa
+      volumes:
+      - name: gcs-model-volume
+        csi:
+          driver: gcsfuse.csi.storage.gke.io
+          volumeAttributes:
+            bucketName: lora-finetuning-data-chavoshi-gke-dev
+            mountOptions: "implicit-dirs"
+      containers:
+      - name: chat-container
+        image: us-east5-docker.pkg.dev/chavoshi-gke-dev/tpu-repo/lora-chat:latest
+        # Command updated to run Python in unbuffered mode
+        command: ["python", "-u", "chat.py"]
+        args: [
+          "--model_path", "/gcs/trained_lora_model"
+        ]
+        volumeMounts:
+        - name: gcs-model-volume
+          mountPath: /gcs
+        # Both stdin and tty are now enabled for interactive attachment
+        stdin: true
+        tty: true
+        env:
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: hf-secret
+              key: token
+        resources:
+          limits:
+            google.com/tpu: 4
+            memory: "64Gi"
+          requests:
+            memory: "64Gi"
+      nodeSelector:
+        cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
+        cloud.google.com/gke-tpu-topology: 2x2
