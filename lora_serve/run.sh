@@ -11,7 +11,12 @@ export IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO_NAME}/lora-ch
 docker build . -t $IMAGE_URI
 docker push $IMAGE_URI
 
-kubectl apply -f gke-deployment.yaml
+kubectl apply -f deployment.yaml
 
 POD_NAME=$(kubectl get pods -l app=lora-chat -o jsonpath='{.items[0].metadata.name}')
+
+
+kubectl attach -i $POD_NAME
 kubectl exec -it $POD_NAME -- /bin/bash
+
+# kubectl delete pod $POD_NAME

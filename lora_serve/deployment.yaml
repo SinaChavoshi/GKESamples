@@ -9,18 +9,32 @@ spec:
       app: lora-chat
   template:
     metadata:
+      annotations:
+        gke-gcsfuse/volumes: "true"
       labels:
         app: lora-chat
     spec:
       serviceAccountName: lora-serving-sa
+      volumes:
+      - name: gcs-model-volume
+        csi:
+          driver: gcsfuse.csi.storage.gke.io
+          volumeAttributes:
+            bucketName: lora-finetuning-data-chavoshi-gke-dev
+            mountOptions: "implicit-dirs"
       containers:
       - name: chat-container
         image: us-east5-docker.pkg.dev/chavoshi-gke-dev/tpu-repo/lora-chat:latest
         command: ["python", "chat.py"]
         args: [
-          "--gcs_lora_adapter_path",
-          "gs://lora-finetuning-data-chavoshi-gke-dev/trained_lora_model/checkpoint-21"
+          # Add the base model ID
+          "--base_model_id", "meta-llama/Llama-3.1-8B-Instruct",
+          # Point to the directory containing the adapter
+          "--lora_adapter_path", "/model/trained_lora_model"
         ]
+        volumeMounts:
+        - name: gcs-model-volume
+          mountPath: /model
         tty: true
         env:
         - name: HF_TOKEN
@@ -31,12 +45,9 @@ spec:
         resources:
           limits:
             google.com/tpu: 4
-            memory: "64Gi" 
-          requests:
-            # And add a memory request as well
             memory: "64Gi"
-        securityContext:
-          privileged: true
+          requests:
+            memory: "64Gi"
       nodeSelector:
         cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
         cloud.google.com/gke-tpu-topology: 2x2

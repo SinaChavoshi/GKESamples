@@ -8,9 +8,7 @@ RUN pip install --no-cache-dir \
     "peft" \
     "datasets" \
     "accelerate" \
-    "evaluate" \
-    "gcsfs" \
-    "google-cloud-storage"
+    "evaluate"
 
 # Set working directory
 WORKDIR /app

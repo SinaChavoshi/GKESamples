@@ -20,9 +20,9 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 def main():
     """Main function to run the interactive chat."""
-    parser = argparse.ArgumentParser(description="Chat with a fine-tuned LoRA model from GCS.")
+    parser = argparse.ArgumentParser(description="Chat with a fine-tuned LoRA model.")
     parser.add_argument("--base_model_id", type=str, default="meta-llama/Llama-3.1-8B-Instruct", help="The base model ID from Hugging Face.")
-    parser.add_argument("--gcs_lora_adapter_path", type=str, required=True, help="The GCS path (gs://...) to the trained LoRA adapter directory.")
+    parser.add_argument("--lora_adapter_path", type=str, required=True, help="The local filesystem path to the trained LoRA adapter directory.")
     args = parser.parse_args()
 
     # --- 1. Load Tokenizer and Base Model ---
@@ -39,14 +39,12 @@ def main():
         token=hf_token,
         torch_dtype=torch.bfloat16,
         device_map="auto",
-        load_in_8bit=True,
     )
 
-    # --- 2. Load and Merge the LoRA Adapter directly from GCS ---
-    print(f"Loading and merging LoRA adapter directly from GCS path: {args.gcs_lora_adapter_path}")
-    # The from_pretrained method can handle "gs://" paths directly
-    model = PeftModel.from_pretrained(base_model, args.gcs_lora_adapter_path)
-    model.eval() 
+    # --- 2. Load and Merge the LoRA Adapter from the FUSE path ---
+    print(f"Loading and applying LoRA adapter from path: {args.lora_adapter_path}")
+    model = PeftModel.from_pretrained(base_model, args.lora_adapter_path)
+    model.eval()
 
     # --- 3. Start Interactive Chat Loop ---
     print("\n\nModel loaded. Start chatting! Type 'quit' or 'exit' to end the session.")
@@ -57,7 +55,7 @@ def main():
             break
 
         prompt = f"### Human: {user_input} ### Assistant:"
-        
+
         inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
 
         with torch.no_grad():
@@ -69,7 +67,7 @@ def main():
                 top_p=0.9,
                 eos_token_id=tokenizer.eos_token_id,
             )
-        
+
         response_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
         assistant_response = response_text.split("### Assistant:")[-1].strip()
         print(f"### Assistant: {assistant_response}\n")
