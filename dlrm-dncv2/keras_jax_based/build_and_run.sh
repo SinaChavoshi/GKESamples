@@ -20,3 +20,15 @@ kubectl get pods -w
 kubectl logs -f jobset/jax-dlrm-benchmark
 
 kubectl delete jobset jax-dlrm-benchmark --wait=false
+
+
+# Generate and save synthatic data 
+# 1. Run the Python script to create the local .tsv files
+python3 generate_synthetic_data.py
+
+
+# 3. Upload the generated files to a new directory in your GCS bucket
+gsutil cp train_sample.tsv gs://${BUCKET_NAME}/synthetic_data/train/
+gsutil cp eval_sample.tsv gs://${BUCKET_NAME}/synthetic_data/eval/
+
+echo "Synthetic data successfully uploaded to GCS."
