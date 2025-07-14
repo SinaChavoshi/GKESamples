@@ -10,23 +10,33 @@ spec:
       template:
         spec:
           template:
+            metadata:
+              # Annotation to enable GCS FUSE
+              annotations:
+                gke-gcsfuse/volumes: "true"
             spec:
               serviceAccountName: tpu-training-sa
               restartPolicy: Never
               nodeSelector:
                 cloud.google.com/gke-tpu-topology: 4x8
                 cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
+              # --- GCS FUSE Volume Definition ---
+              volumes:
+              - name: gcs-fuse-csi-volume
+                csi:
+                  driver: gcsfuse.csi.storage.gke.io
+                  volumeAttributes:
+                    bucketName: ${BUCKET_NAME}
+                    mountOptions: "implicit-dirs"
               containers:
               - name: jax-keras-dlrm
                 image: us-east5-docker.pkg.dev/${PROJECT_ID}/${AR_REPO_NAME}/jax-dlrm-gke:latest
                 imagePullPolicy: "Always"
+                # --- Mount the GCS bucket to /gcs ---
+                volumeMounts:
+                - name: gcs-fuse-csi-volume
+                  mountPath: /gcs
                 env:
-                - name: MODEL_DIR
-                  value: "gs://${BUCKET_NAME}/jax-dlrm-output"
-                - name: TRAIN_DATA_PATH
-                  value: "gs://criteo-tpu-us-east5/criteo_preprocessed_shuffled_unbatched/train/*"
-                - name: EVAL_DATA_PATH
-                  value: "gs://criteo-tpu-us-east5/criteo_preprocessed_shuffled_unbatched/eval/*"
                 # Explicit JAX distributed setup
                 - name: JAX_COORDINATOR_ADDRESS
                   # The service for worker 0 is named <jobset>-<replicated_job>-0-0

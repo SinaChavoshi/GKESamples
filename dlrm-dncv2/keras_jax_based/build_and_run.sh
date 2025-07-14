@@ -14,5 +14,9 @@ envsubst < jobset_jax.yaml | kubectl apply -f -
 # Check the status of the JobSet
 kubectl get jobset jax-dlrm-benchmark
 
+kubectl get pods -w 
+
 # Check the logs of one of the pods
 kubectl logs -f jobset/jax-dlrm-benchmark
+
+kubectl delete jobset jax-dlrm-benchmark --wait=false
