@@ -2,21 +2,51 @@
 set -e
 set -x
 
-# Set TensorFlow and XLA flags for SparseCore
-export TF_XLA_FLAGS='--tf_mlir_enable_mlir_bridge=true --tf_xla_sparse_core_disable_table_stacking=true --tf_mlir_enable_convert_control_to_data_outputs_pass=true --tf_mlir_enable_merge_control_flow_pass=true'
+# --- Dynamically Build TF_CONFIG and find the Master Worker ---
 
-# Set the model output directory to your GCS bucket
+IFS=',' read -r -a WORKERS <<< "$TPU_WORKER_HOSTNAMES"
+MASTER_ADDR="grpc://${WORKERS[0]}:8470"
+echo "Master TPU Worker Address: ${MASTER_ADDR}"
+
+JSON_WORKER_LIST=""
+for i in "${!WORKERS[@]}"; do
+    if [ $i -gt 0 ]; then
+        JSON_WORKER_LIST+=','
+    fi
+    JSON_WORKER_LIST+="\"${WORKERS[$i]}:8470\""
+done
+
+TASK_INDEX=$JOB_COMPLETION_INDEX
+
+export TF_CONFIG=$(cat <<EOF
+{
+  "cluster": {
+    "worker": [${JSON_WORKER_LIST}]
+  },
+  "task": {
+    "type": "worker",
+    "index": ${TASK_INDEX}
+  }
+}
+EOF
+)
+echo "Constructed TF_CONFIG for this pod:"
+echo "${TF_CONFIG}"
+
+# --- Original Script Execution ---
+
+export TF_XLA_FLAGS='--tf_mlir_enable_mlir_bridge=true --tf_xla_sparse_core_disable_table_stacking=true --tf_mlir_enable_convert_control_to_data_outputs_pass=true --tf_mlir_enable_merge_control_flow_pass=true'
 MODEL_DIR="gs://${BUCKET_NAME}/tf-dlrm-output/$(date +%s)"
 echo "Using model directory: $MODEL_DIR"
 
-# Run the training script
-# Note: Using legacy Keras (Keras 2) as required by the script
-TF_USE_LEGACY_KERAS=1 TPU_LOAD_LIBRARY=0 python3 ./models/official/recommendation/ranking/train.py \
+# Set TPU_LOAD_LIBRARY=1 to force TensorFlow to load the libtpu.so driver.
+TF_USE_LEGACY_KERAS=1 TPU_LOAD_LIBRARY=1 python3 ./models/official/recommendation/ranking/train.py \
     --mode=train \
     --model_dir=${MODEL_DIR} \
     --params_override="
 runtime:
   distribution_strategy: tpu
+  tpu: '${MASTER_ADDR}'
   mixed_precision_dtype: 'mixed_bfloat16'
 task:
   use_synthetic_data: false

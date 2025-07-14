@@ -9,7 +9,9 @@ WORKDIR /app
 RUN pip install --no-cache-dir --upgrade pip
 RUN pip install --no-cache-dir \
     gin-config \
-    tensorflow-datasets
+    tensorflow-datasets  \
+    PyYAML  \
+    cloud-tpu-client
 RUN pip install tf-keras-nightly --no-deps
 RUN pip install --no-cache-dir tf-nightly-tpu -f https://storage.googleapis.com/libtpu-tf-releases/index.html
 

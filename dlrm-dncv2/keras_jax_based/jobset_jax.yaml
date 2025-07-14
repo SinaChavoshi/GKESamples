@@ -1,0 +1,47 @@
+apiVersion: jobset.x-k8s.io/v1alpha2
+kind: JobSet
+metadata:
+  name: jax-dlrm-benchmark
+  namespace: default
+spec:
+  replicatedJobs:
+    - name: worker
+      replicas: 8
+      template:
+        spec:
+          template:
+            spec:
+              serviceAccountName: tpu-training-sa
+              restartPolicy: Never
+              nodeSelector:
+                cloud.google.com/gke-tpu-topology: 4x8
+                cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
+              containers:
+              - name: jax-keras-dlrm
+                image: us-east5-docker.pkg.dev/${PROJECT_ID}/${AR_REPO_NAME}/jax-dlrm-gke:latest
+                imagePullPolicy: "Always"
+                env:
+                - name: MODEL_DIR
+                  value: "gs://${BUCKET_NAME}/jax-dlrm-output"
+                - name: TRAIN_DATA_PATH
+                  value: "gs://criteo-tpu-us-east5/criteo_preprocessed_shuffled_unbatched/train/*"
+                - name: EVAL_DATA_PATH
+                  value: "gs://criteo-tpu-us-east5/criteo_preprocessed_shuffled_unbatched/eval/*"
+                # Explicit JAX distributed setup
+                - name: JAX_COORDINATOR_ADDRESS
+                  # The service for worker 0 is named <jobset>-<replicated_job>-0-0
+                  value: "jax-dlrm-benchmark-worker-0-0.default.svc:12345"
+                - name: JAX_NUM_PROCESSES
+                  value: "8"
+                - name: JAX_PROCESS_ID
+                  valueFrom:
+                    fieldRef:
+                      # This gets the pod's unique index from the JobSet (0-7)
+                      fieldPath: metadata.annotations['jobset.sigs.k8s.io/job-index']
+                resources:
+                  limits:
+                    google.com/tpu: 4
+                securityContext:
+                  privileged: true
+  failurePolicy:
+    maxRestarts: 0

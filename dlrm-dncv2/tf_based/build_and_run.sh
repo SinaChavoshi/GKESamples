@@ -13,3 +13,10 @@ docker build -t ${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO_NAME}/${IMAGE_N
 docker push ${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO_NAME}/${IMAGE_NAME}:${IMAGE_TAG}
 
 envsubst < jobset.yaml | kubectl apply -f -
+
+kubectl get pods -w
+
+kubectl logs -n jobset-system -l control-plane=controller-manager
+
+
+kubectl delete jobset tf-dlrm-benchmark
