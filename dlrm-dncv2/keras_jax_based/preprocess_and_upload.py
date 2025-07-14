@@ -32,7 +32,7 @@ def preprocess_and_upload(input_path, bucket_name, gcs_prefix):
 
     dataset = tf.data.experimental.make_csv_dataset(
         file_pattern=input_path,
-        batch_size=8192, # Use a larger batch size for efficiency
+        batch_size=8192,
         column_names=COLUMN_NAMES,
         label_name='label',
         header=False,
@@ -47,7 +47,6 @@ def preprocess_and_upload(input_path, bucket_name, gcs_prefix):
         dense_features = tf.stack([tf.strings.to_number(features[f'int-feature-{j+1}'], out_type=tf.float32) for j in range(NUM_DENSE_FEATURES)], axis=1)
         sparse_features = [tf.strings.to_number(features[f'categorical-feature-{k+1}'], out_type=tf.int32) for k in range(len(VOCAB_SIZES))]
 
-        # Save chunk locally first
         np.save(os.path.join(local_temp_dir, f'dense_chunk_{i}.npy'), dense_features.numpy())
         np.save(os.path.join(local_temp_dir, f'labels_chunk_{i}.npy'), labels.numpy())
         for k in range(len(VOCAB_SIZES)):
@@ -62,7 +61,7 @@ def preprocess_and_upload(input_path, bucket_name, gcs_prefix):
     for file_name in os.listdir(local_temp_dir):
         os.remove(os.path.join(local_temp_dir, file_name))
     os.rmdir(local_temp_dir)
-    print("--- Preprocessing and upload complete. ---")
+    print(f"--- Preprocessing and upload for {gcs_prefix} complete. ---")
 
 
 if __name__ == "__main__":
@@ -70,16 +69,19 @@ if __name__ == "__main__":
     parser.add_argument("--bucket_name", required=True, help="Your GCS bucket name.")
     args = parser.parse_args()
 
+    # Define the new, corrected public path
+    PUBLIC_CRITEO_PATH = "gs://cloud-samples-data/ai-platform-unified/dlrm/data/criteo_tpu"
+
     # Process training data
     preprocess_and_upload(
-        input_path="gs://criteo-tpu-us-east5/criteo_preprocessed_shuffled_unbatched/train/*",
+        input_path=f"{PUBLIC_CRITEO_PATH}/train/*",
         bucket_name=args.bucket_name,
         gcs_prefix="jax_preprocessed_data/train"
     )
 
     # Process evaluation data
     preprocess_and_upload(
-        input_path="gs://criteo-tpu-us-east5/criteo_preprocessed_shuffled_unbatched/eval/*",
+        input_path=f"{PUBLIC_CRITEO_PATH}/eval/*",
         bucket_name=args.bucket_name,
         gcs_prefix="jax_preprocessed_data/eval"
     )
