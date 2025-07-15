@@ -12,36 +12,23 @@ spec:
         spec:
           template:
             metadata:
-              annotations:
-                gke-gcsfuse/volumes: "true"
+              # 2. Removed GCS Fuse annotation
+              annotations: {}
             spec:
               serviceAccountName: tpu-training-sa
               restartPolicy: Never
               nodeSelector:
-                # 2. Target a single-node 2x4 topology
                 cloud.google.com/gke-tpu-topology: 2x2
                 cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
-              volumes:
-              - name: gcs-fuse-csi-volume
-                csi:
-                  driver: gcsfuse.csi.storage.gke.io
-                  volumeAttributes:
-                    # Use the hardcoded bucket name
-                    bucketName: ${BUCKET_NAME}
-                    mountOptions: "implicit-dirs"
               containers:
               - name: jax-keras-dlrm
                 image: us-east5-docker.pkg.dev/${PROJECT_ID}/${AR_REPO_NAME}/jax-dlrm-gke:latest
                 imagePullPolicy: "Always"
-                volumeMounts:
-                - name: gcs-fuse-csi-volume
-                  mountPath: /gcs
                 env:
-                # 3. JAX distributed env vars are removed for single-node run
                 - name: TRAIN_DATA_PATH
-                  value: "/gcs/synthetic_data/train/*"
+                  value: "gs://zyc_dlrm/dataset/tb_tf_record_train_val/train/day_*/*"
                 - name: EVAL_DATA_PATH
-                  value: "/gcs/synthetic_data/eval/*"
+                  value: "gs://zyc_dlrm/dataset/tb_tf_record_train_val/eval/day_*/*"
                 resources:
                   limits:
                     google.com/tpu: 4 # A 2x4 node has 4 TPU chips

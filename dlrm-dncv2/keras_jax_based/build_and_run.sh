@@ -12,7 +12,6 @@ docker build -f Dockerfile -t ${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO_N
 docker push ${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO_NAME}/${IMAGE_NAME}:latest
 
 # Run job 
-envsubst < jobset_jax.yaml | kubectl apply -f -
 envsubst < jobset_jax_singlenode_4chip.yaml | kubectl apply -f -
 envsubst < jobset_jax_singlenode_8chip.yaml | kubectl apply -f -
 envsubst < jobset_jax_v6e_32.yaml | kubectl apply -f -
@@ -24,7 +23,7 @@ kubectl get pods -w
 # Check the logs of one of the pods
 kubectl logs -f jobset/jax-dlrm-benchmark
 kubectl logs -f jobs/jax-dlrm-singlenode-8chip-worker-0 
-kubectl logs -f jobs/jax-dlrm-benchmark-v4-8chip-worker-0 
+kubectl logs -f jobs/jax-dlrm-benchmark-v6e-32chip-worker-0
 
 # Delete jobs
 kubectl delete jobset jax-dlrm-benchmark --wait=false
