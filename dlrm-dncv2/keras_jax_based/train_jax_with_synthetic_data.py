@@ -35,7 +35,7 @@ def create_dlrm_model(embedding_layers):
     """Creates the full DLRM model-DNCv2 model"""
     dense_input = keras.layers.Input(shape=(NUM_DENSE_FEATURES,), name="dense_features", dtype="float32")
     sparse_inputs = {
-        f"feature_{i}": keras.layers.Input(shape=(None,), name=f"feature_{i}", dtype="int64", ragged=True)
+        f"feature_{i}": keras.layers.Input(shape=(size,), name=f"feature_{i}", dtype="int32")
         for i, size in enumerate(MULTI_HOT_SIZES)
     }
 
@@ -58,7 +58,7 @@ def create_dlrm_model(embedding_layers):
     # Concatenate all features to form the input for the cross network
     x0 = keras.layers.Concatenate(axis=1)(embedding_vectors + [bottom_mlp])
 
-    # Build the DCN-V2 Cross Network using the FeatureCross layer
+    # --- Build the DCN-V2 Cross Network using the FeatureCross layer ---
     x = x0
     for _ in range(DCN_NUM_LAYERS):
         x = keras_rs.layers.FeatureCross(
@@ -80,52 +80,34 @@ def create_dlrm_model(embedding_layers):
 
     return keras.Model(inputs={"dense_features": dense_input, "sparse_features": sparse_inputs}, outputs=top_mlp)
 
-def create_dataset_from_tfrecords(file_pattern, is_training, global_batch_size):
-    """Creates a tf.data pipeline from TFRecord files."""
+def create_dataset(input_path, is_training, global_batch_size):
+    """Creates a tf.data pipeline for the synthetic Criteo data."""
+    dense_defaults = [tf.constant([0.0], dtype=tf.float32)] * (1 + NUM_DENSE_FEATURES)
+    categorical_defaults = [tf.constant(["0"], dtype=tf.string)] * len(VOCAB_SIZES)
+    column_defaults = dense_defaults + categorical_defaults
+    column_names = ['label'] + [f'int-feature-{i+1}' for i in range(NUM_DENSE_FEATURES)] + [f'categorical-feature-{i+1}' for i in range(len(VOCAB_SIZES))]
 
-    # Feature description for parsing the tf.train.Example proto.
-    # This matches the schema for multi-hot categorical features.
-    feature_description = {
-        'label': tf.io.FixedLenFeature([1], tf.float32),
-        'dense': tf.io.FixedLenFeature([NUM_DENSE_FEATURES], tf.float32),
-    }
-    for i in range(len(VOCAB_SIZES)):
-        feature_description[str(i)] = tf.io.VarLenFeature(tf.int64)
-
-    def _parse_fn(example_proto):
-        """Parses a single tf.train.Example."""
-        features = tf.io.parse_example(example_proto, feature_description)
-        label = features.pop('label')
-
-        dense_features = features.pop('dense')
-        sparse_features_processed = {}
-        for i in range(len(VOCAB_SIZES)):
-            # Convert the SparseTensor from VarLenFeature to a RaggedTensor,
-            # which Keras Embedding layers can handle for multi-hot inputs.
-            sparse_tensor = features[str(i)]
-            ragged_tensor = tf.RaggedTensor.from_sparse(sparse_tensor)
-            sparse_features_processed[f"feature_{i}"] = ragged_tensor
-
-        return {"dense_features": dense_features, "sparse_features": sparse_features_processed}, label
-
-    dataset = tf.data.TFRecordDataset.list_files(file_pattern, shuffle=is_training)
-    if is_training:
-        dataset = dataset.repeat()
-
-    dataset = dataset.interleave(
-        tf.data.TFRecordDataset,
-        cycle_length=tf.data.AUTOTUNE,
-        num_parallel_calls=tf.data.AUTOTUNE,
-        deterministic=not is_training,
+    dataset = tf.data.experimental.make_csv_dataset(
+        file_pattern=input_path,
+        batch_size=global_batch_size,
+        column_names=column_names,
+        column_defaults=column_defaults,
+        label_name="label",
+        header=False,
+        field_delim='\t',
+        num_epochs=None if is_training else 1,
+        shuffle=is_training
     )
 
-    if is_training:
-        dataset = dataset.shuffle(buffer_size=16384)
+    def process_features(features, label):
+        dense_features = tf.stack([features[f'int-feature-{i+1}'] for i in range(NUM_DENSE_FEATURES)], axis=1)
+        sparse_features_processed = {}
+        for i, size in enumerate(MULTI_HOT_SIZES):
+             cat_feature = tf.strings.to_number(features[f'categorical-feature-{i+1}'], out_type=tf.int32)
+             sparse_features_processed[f"feature_{i}"] = tf.tile(tf.expand_dims(cat_feature, -1), [1, size])
+        return {"dense_features": dense_features, "sparse_features": sparse_features_processed}, label
 
-    dataset = dataset.batch(global_batch_size, drop_remainder=True)
-    dataset = dataset.map(_parse_fn, num_parallel_calls=tf.data.AUTOTUNE)
-    return dataset.prefetch(tf.data.AUTOTUNE)
-
+    return dataset.map(process_features, num_parallel_calls=tf.data.AUTOTUNE).prefetch(tf.data.AUTOTUNE)
 
 def main():
     class ThroughputLogger(keras.callbacks.Callback):
@@ -172,28 +154,20 @@ def main():
     model.compile(optimizer=optimizer, loss="binary_crossentropy", metrics=["accuracy", "auc"], jit_compile=True)
     model.summary()
 
-    train_data_path = os.environ.get("TRAIN_DATA_PATH")
-    eval_data_path = os.environ.get("EVAL_DATA_PATH")
+    train_data_path = os.environ.get("TRAIN_DATA_PATH", "/gcs/synthetic_data/train/*")
+    eval_data_path = os.environ.get("EVAL_DATA_PATH", "/gcs/synthetic_data/eval/*")
 
-    if not train_data_path or not eval_data_path:
-        raise ValueError("TRAIN_DATA_PATH and EVAL_DATA_PATH environment variables must be set.")
-
-    # --- Use the new TFRecord dataset function ---
-    train_dataset = create_dataset_from_tfrecords(train_data_path, is_training=True, global_batch_size=GLOBAL_BATCH_SIZE)
-    eval_dataset = create_dataset_from_tfrecords(eval_data_path, is_training=False, global_batch_size=GLOBAL_BATCH_SIZE)
+    train_dataset = create_dataset(train_data_path, is_training=True, global_batch_size=GLOBAL_BATCH_SIZE)
+    eval_dataset = create_dataset(eval_data_path, is_training=False, global_batch_size=GLOBAL_BATCH_SIZE)
 
     throughput_callback = ThroughputLogger(batch_size=GLOBAL_BATCH_SIZE)
 
-    # These steps match the benchmark run configuration
-    train_steps = 10000
-    validation_steps = 660
-
     model.fit(
         train_dataset,
-        epochs=1, # The benchmark runs for a fixed number of steps, not epochs.
-        steps_per_epoch=train_steps,
+        epochs=1,
+        steps_per_epoch=100,
         validation_data=eval_dataset,
-        validation_steps=validation_steps,
+        validation_steps=20,
         callbacks=[throughput_callback]
     )
 
