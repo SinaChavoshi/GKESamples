@@ -7,13 +7,20 @@ import keras
 # --- Custom DCN Layer to remove tfrs dependency ---
 class CustomMultiLayerDCN(keras.layers.Layer):
     """A custom implementation of the Multi-Layer DCN cross network."""
-    def __init__(self, projection_dim, num_layers, **kwargs):
+    def __init__(self, num_layers, **kwargs):
         super().__init__(**kwargs)
         self.num_layers = num_layers
-        # Create a list of dense layers for the cross network
+        # The dense layers will be created in build() once the input shape is known.
+        self._dense_layers = []
+
+    def build(self, input_shape):
+        # Create the dense layers with the correct output dimension, which is the
+        # same as the input dimension for the cross network.
+        dim = input_shape[-1]
         self._dense_layers = [
-            keras.layers.Dense(projection_dim, use_bias=True) for _ in range(num_layers)
+            keras.layers.Dense(dim, use_bias=True) for _ in range(self.num_layers)
         ]
+        super().build(input_shape)
 
     def call(self, x0):
         x = x0
@@ -73,7 +80,7 @@ def create_dlrm_model(embedding_layers):
     
     # Use the new custom DCN layer
     interaction_output = CustomMultiLayerDCN(
-        projection_dim=512, num_layers=3
+        num_layers=3
     )(all_features)
 
     top_mlp_input = keras.layers.Concatenate(axis=1)([bottom_mlp, interaction_output])
@@ -88,24 +95,40 @@ def create_dlrm_model(embedding_layers):
 
 def create_dataset(input_path, is_training, global_batch_size):
     """Creates a tf.data pipeline for the synthetic Criteo data."""
+    # Define the defaults for each column to enforce the correct data types.
+    # Label and dense features are floats.
+    dense_defaults = [tf.constant([0.0], dtype=tf.float32)] * (1 + NUM_DENSE_FEATURES)
+    # Categorical features must be read as strings.
+    categorical_defaults = [tf.constant(["0"], dtype=tf.string)] * len(VOCAB_SIZES)
+    column_defaults = dense_defaults + categorical_defaults
+    
     column_names = ['label'] + [f'int-feature-{i+1}' for i in range(NUM_DENSE_FEATURES)] + [f'categorical-feature-{i+1}' for i in range(len(VOCAB_SIZES))]
+    
     dataset = tf.data.experimental.make_csv_dataset(
         file_pattern=input_path,
         batch_size=global_batch_size,
         column_names=column_names,
+        column_defaults=column_defaults,  # Use the defined defaults
         label_name="label",
         header=False,
         field_delim='\t',
         num_epochs=None if is_training else 1,
         shuffle=is_training
     )
+    
     def process_features(features, label):
-        dense_features = tf.stack([tf.strings.to_number(features[f'int-feature-{i+1}'], out_type=tf.float32) for i in range(NUM_DENSE_FEATURES)], axis=1)
+        # Dense features are already floats, no conversion needed.
+        dense_features = tf.stack([features[f'int-feature-{i+1}'] for i in range(NUM_DENSE_FEATURES)], axis=1)
+        
         sparse_features_processed = {}
         for i, size in enumerate(MULTI_HOT_SIZES):
+             # Categorical features are now strings, so we convert them to numbers.
              cat_feature = tf.strings.to_number(features[f'categorical-feature-{i+1}'], out_type=tf.int32)
+             # Tile the features for multi-hot representation.
              sparse_features_processed[f"feature_{i}"] = tf.tile(tf.expand_dims(cat_feature, -1), [1, size])
+             
         return {"dense_features": dense_features, "sparse_features": sparse_features_processed}, label
+        
     return dataset.map(process_features, num_parallel_calls=tf.data.AUTOTUNE).prefetch(tf.data.AUTOTUNE)
 
 def main():
@@ -139,6 +162,16 @@ def main():
     devices = jax.devices()
     print(f"Global JAX devices: {devices}")
     
+    if os.environ.get("JAX_PROCESS_ID"):
+        mesh = keras.distribution.DeviceMesh(
+            shape=(len(devices),),
+            axis_names=("batch",),
+            devices=devices
+        )
+        distribution = keras.distribution.DataParallel(device_mesh=mesh)
+        keras.distribution.set_distribution(distribution)
+        print("Keras distribution set for JAX DataParallel.")
+
     GLOBAL_BATCH_SIZE = 32768
     PER_REPLICA_BATCH_SIZE = GLOBAL_BATCH_SIZE // len(devices) if devices else GLOBAL_BATCH_SIZE
 
@@ -154,8 +187,12 @@ def main():
     )
     model.summary()
     
-    train_dataset = create_dataset(os.environ.get("TRAIN_DATA_PATH"), is_training=True, global_batch_size=GLOBAL_BATCH_SIZE)
-    eval_dataset = create_dataset(os.environ.get("EVAL_DATA_PATH"), is_training=False, global_batch_size=GLOBAL_BATCH_SIZE)
+    # Use environment variables set in the JobSet to find the data
+    train_data_path = os.environ.get("TRAIN_DATA_PATH", "/gcs/synthetic_data/train/*")
+    eval_data_path = os.environ.get("EVAL_DATA_PATH", "/gcs/synthetic_data/eval/*")
+    
+    train_dataset = create_dataset(train_data_path, is_training=True, global_batch_size=GLOBAL_BATCH_SIZE)
+    eval_dataset = create_dataset(eval_data_path, is_training=False, global_batch_size=GLOBAL_BATCH_SIZE)
             
     throughput_callback = ThroughputLogger(batch_size=GLOBAL_BATCH_SIZE)
     

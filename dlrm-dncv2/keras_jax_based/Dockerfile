@@ -13,7 +13,6 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir \
     keras \
     tensorflow \
-    tensorflow_recommenders \
     keras-rs
 
 # Copy the JAX training script into the container
