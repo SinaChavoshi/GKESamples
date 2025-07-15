@@ -34,12 +34,10 @@ spec:
                 - name: gcs-fuse-csi-volume
                   mountPath: /gcs
                 env:
-                # --- Point to the new synthetic data paths ---
                 - name: TRAIN_DATA_PATH
                   value: "/gcs/synthetic_data/train/*"
                 - name: EVAL_DATA_PATH
                   value: "/gcs/synthetic_data/eval/*"
-                # Explicit JAX distributed setup
                 - name: JAX_COORDINATOR_ADDRESS
                   value: "jax-dlrm-benchmark-worker-0-0.default.svc:12345"
                 - name: JAX_NUM_PROCESSES

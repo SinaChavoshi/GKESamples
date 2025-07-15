@@ -9,8 +9,6 @@ class CustomMultiLayerDCNV2(keras.layers.Layer):
     """
     A custom, pure-Keras implementation of the DCN-V2 cross network.
 
-    This version uses a low-rank matrix decomposition to model feature
-    interactions, which aligns with the MLPerf benchmark's DLRM-DCNv2.
 
     Reference:
       DCN V2: Improved Deep & Cross Network, https://arxiv.org/abs/2008.13535

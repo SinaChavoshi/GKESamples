@@ -61,7 +61,7 @@ echo "Uploading evaluation file (day_23) to ${GCS_EVAL_PATH}..."
 gsutil cp "day_23.gz" "${GCS_EVAL_PATH}"
 echo "Evaluation file uploaded."
 
-# Move back to the parent directory
+
 cd ..
 
 echo ""
