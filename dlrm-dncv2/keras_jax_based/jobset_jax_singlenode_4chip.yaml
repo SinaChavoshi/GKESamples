@@ -27,11 +27,11 @@ spec:
                   driver: gcsfuse.csi.storage.gke.io
                   volumeAttributes:
                     # Use the hardcoded bucket name
-                    bucketName: "dlrm-training-chavoshi-gke-dev"
+                    bucketName: ${BUCKET_NAME}
                     mountOptions: "implicit-dirs"
               containers:
               - name: jax-keras-dlrm
-                image: us-east5-docker.pkg.dev/chavoshi-gke-dev/tpu-repo/jax-dlrm-gke:latest
+                image: us-east5-docker.pkg.dev/${PROJECT_ID}/${AR_REPO_NAME}/jax-dlrm-gke:latest
                 imagePullPolicy: "Always"
                 volumeMounts:
                 - name: gcs-fuse-csi-volume

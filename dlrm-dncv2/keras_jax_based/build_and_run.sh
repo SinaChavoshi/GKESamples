@@ -13,7 +13,8 @@ docker push ${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO_NAME}/${IMAGE_NAME}
 
 # Run job 
 envsubst < jobset_jax.yaml | kubectl apply -f -
-envsubst < jobset_jax_singlenode_test.yaml | kubectl apply -f -
+envsubst < jobset_jax_singlenode_4chip.yaml | kubectl apply -f -
+envsubst < jobset_jax_singlenode_8chip.yaml | kubectl apply -f -
 
 # Check the status of the JobSet
 kubectl get jobset jax-dlrm-benchmark
