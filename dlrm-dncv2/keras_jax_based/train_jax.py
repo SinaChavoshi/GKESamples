@@ -105,7 +105,7 @@ def create_dataset_from_tfrecords(input_path, is_training, global_batch_size):
             
         return {"dense_features": dense_features, "sparse_features": sparse_features}, label
 
-    dataset = tf.data.Dataset.list_files(input_path, shuffle=is_training)
+    dataset = tf.data.Dataset.list_files(input_path, shuffle=is_training)    
     dataset = dataset.interleave(
         tf.data.TFRecordDataset,
         cycle_length=tf.data.AUTOTUNE,
@@ -142,10 +142,7 @@ def main():
 
     if os.environ.get("JAX_PROCESS_ID"):
         print("--- Initializing JAX for Multi-Host Environment ---")
-        distribution = keras.distribution.DataParallel(
-            device_mesh=keras.distribution.DeviceMesh.from_devices(jax.devices()),
-            job_name="worker",
-        )
+        distribution = keras.distribution.DataParallel(devices=jax.devices())
         keras.distribution.set_distribution(distribution)
         print("Keras distribution set for JAX DataParallel.")
     else:

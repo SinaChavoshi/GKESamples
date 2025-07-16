@@ -21,7 +21,7 @@ kubectl get jobset jax-dlrm-benchmark
 kubectl get pods -w 
 
 # Check the logs of one of the pods
-kubectl logs -f jobset/jax-dlrm-benchmark
+kubectl logs -f jobs/jax-dlrm-singlenode-test-worker-0 
 kubectl logs -f jobs/jax-dlrm-singlenode-8chip-worker-0 
 kubectl logs -f jobs/jax-dlrm-benchmark-v6e-32chip-worker-0
 
