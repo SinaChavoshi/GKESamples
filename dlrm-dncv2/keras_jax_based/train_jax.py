@@ -83,7 +83,6 @@ def create_dataset_from_tfrecords(input_path, is_training, global_batch_size):
         'label': tf.io.FixedLenFeature([1], dtype=tf.int64, default_value=None)
     }
     # Dense features are named 'dense-feature-1' to 'dense-feature-13'
-    # The error log confirms these are actually floats in the TFRecord file.
     for i in range(1, NUM_DENSE_FEATURES + 1):
         feature_spec[f'dense-feature-{i}'] = tf.io.FixedLenFeature(
             [1], dtype=tf.float32, default_value=None
@@ -98,7 +97,6 @@ def create_dataset_from_tfrecords(input_path, is_training, global_batch_size):
         
         dense_features_list = []
         for i in range(1, NUM_DENSE_FEATURES + 1):
-            # No cast needed now, as they are read as float32
             dense_feat = features[f'dense-feature-{i}']
             dense_features_list.append(dense_feat)
         dense_features = tf.concat(dense_features_list, axis=1)
@@ -190,8 +188,9 @@ def main():
 
     throughput_callback = ThroughputLogger(batch_size=GLOBAL_BATCH_SIZE)
 
-    train_steps = 10000
-    validation_steps = 660
+    # --- Reduced steps for a quick validation run ---
+    train_steps = 2
+    validation_steps = 1
 
     model.fit(
         train_dataset,
