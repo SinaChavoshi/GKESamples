@@ -1,5 +1,13 @@
 import numpy as np
 
+#  Generate and save synthatic data 
+#  1. Run the Python script to create the local .tsv files
+# python3 generate_synthetic_data.py
+
+#  2. Upload the generated files to a new directory in your GCS bucket
+# gsutil cp train_sample.tsv gs://${BUCKET_NAME}/synthetic_data/train/
+# gsutil cp eval_sample.tsv gs://${BUCKET_NAME}/synthetic_data/eval/
+
 NUM_DENSE_FEATURES = 13
 VOCAB_SIZES = [
     40000000, 39060, 17295, 7424, 20265, 3, 7122, 1543, 63, 40000000,
