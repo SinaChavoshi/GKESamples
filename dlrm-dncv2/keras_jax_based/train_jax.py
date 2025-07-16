@@ -78,7 +78,6 @@ def create_dlrm_model(embedding_layers):
 
 def create_dataset_from_tfrecords(input_path, is_training, global_batch_size):
     """Creates a tf.data pipeline from TFRecord files using the correct feature names."""
-    # This feature_spec now matches the keys found in the debug output
     feature_spec = {
         'label': tf.io.FixedLenFeature([1], dtype=tf.int64, default_value=None)
     }
@@ -87,7 +86,6 @@ def create_dataset_from_tfrecords(input_path, is_training, global_batch_size):
         feature_spec[f'dense-feature-{i}'] = tf.io.FixedLenFeature(
             [1], dtype=tf.float32, default_value=None
         )
-    # Sparse features are named 'sparse-feature-14' to 'sparse-feature-39'
     for i in range(NUM_DENSE_FEATURES + 1, NUM_DENSE_FEATURES + NUM_SPARSE_FEATURES + 1):
         feature_spec[f'sparse-feature-{i}'] = tf.io.VarLenFeature(dtype=tf.int64)
 
@@ -102,15 +100,13 @@ def create_dataset_from_tfrecords(input_path, is_training, global_batch_size):
         dense_features = tf.concat(dense_features_list, axis=1)
 
         sparse_features = {}
-        # Map the dataset keys ('sparse-feature-14', etc.) to the model's expected
-        # input keys ('feature_0', etc.)
         for i in range(NUM_DENSE_FEATURES + 1, NUM_DENSE_FEATURES + NUM_SPARSE_FEATURES + 1):
             model_feature_index = i - (NUM_DENSE_FEATURES + 1)
             sparse_features[f"feature_{model_feature_index}"] = tf.sparse.to_dense(features[f'sparse-feature-{i}'])
             
         return {"dense_features": dense_features, "sparse_features": sparse_features}, label
 
-    dataset = tf.data.Dataset.list_files(input_path, shuffle=is_training)
+    dataset = tf.data.Dataset.list_files(input_path, shuffle=is_training)    
     dataset = dataset.interleave(
         tf.data.TFRecordDataset,
         cycle_length=tf.data.AUTOTUNE,
@@ -147,18 +143,14 @@ def main():
 
     if os.environ.get("JAX_PROCESS_ID"):
         print("--- Initializing JAX for Multi-Host Environment ---")
-        jax.distributed.initialize()
-    else:
-        print("--- Running in Single-Host Mode ---")
-
-    devices = jax.devices()
-    print(f"Global JAX devices: {devices}")
-
-    if os.environ.get("JAX_PROCESS_ID"):
-        mesh = keras.distribution.DeviceMesh(shape=(len(devices),), axis_names=("batch",), devices=devices)
-        distribution = keras.distribution.DataParallel(device_mesh=mesh)
+        distribution = keras.distribution.DataParallel(devices=jax.devices())
         keras.distribution.set_distribution(distribution)
         print("Keras distribution set for JAX DataParallel.")
+    else:
+        print("--- Running in Single-Host Mode ---")
+        distribution = None
+    devices = jax.devices()
+    print(f"Global JAX devices: {devices}")
 
     GLOBAL_BATCH_SIZE = 32768
     
@@ -183,8 +175,17 @@ def main():
     train_data_path = os.environ.get("TRAIN_DATA_PATH", "gs://zyc_dlrm/dataset/tb_tf_record_train_val/train/day_*/*")
     eval_data_path = os.environ.get("EVAL_DATA_PATH", "gs://zyc_dlrm/dataset/tb_tf_record_train_val/eval/day_*/*")
 
-    train_dataset = create_dataset_from_tfrecords(train_data_path, is_training=True, global_batch_size=GLOBAL_BATCH_SIZE)
-    eval_dataset = create_dataset_from_tfrecords(eval_data_path, is_training=False, global_batch_size=GLOBAL_BATCH_SIZE)
+    # --- Manually create and distribute the dataset as per https://github.com/keras-team/keras-rs/pull/131
+    train_dataset_raw = create_dataset_from_tfrecords(train_data_path, is_training=True, global_batch_size=GLOBAL_BATCH_SIZE)
+    eval_dataset_raw = create_dataset_from_tfrecords(eval_data_path, is_training=False, global_batch_size=GLOBAL_BATCH_SIZE)
+
+    if distribution:
+        print("--- Manually sharding dataset for multi-host training ---")
+        train_dataset = distribution.distribute_dataset(train_dataset_raw)
+        eval_dataset = distribution.distribute_dataset(eval_dataset_raw)
+    else:
+        train_dataset = train_dataset_raw
+        eval_dataset = eval_dataset_raw
 
     throughput_callback = ThroughputLogger(batch_size=GLOBAL_BATCH_SIZE)
 
