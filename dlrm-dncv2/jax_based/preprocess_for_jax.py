@@ -1,86 +1,99 @@
 import os
+import time
 from absl import app
 from absl import flags
-from absl import logging
 import numpy as np
+import tensorflow as tf
+from google.cloud import storage
 
-# Import the same DataLoader used in your training script
 from dataloader import CriteoDataLoader
+from dataloader import DataConfig
 
 FLAGS = flags.FLAGS
 
-flags.DEFINE_string(
-    "source_data_path",
-    "gs://zyc_dlrm/dataset/tb_tf_record_train_val/train/day_*/*",
-    "GCS path pattern for the source TFRecord files."
+_OUTPUT_DIR = flags.DEFINE_string(
+    "output_dir",
+    # This default will be inside the GCS Fuse mount in the pod
+    "/gcs/dlrm_preprocessed_jax",
+    "The GCS directory to save the preprocessed NumPy files.",
 )
-flags.DEFINE_string(
-    "output_path",
-    # Updated to use the GCS Fuse mount path and your bucket
-    "/gcs/dlrm_preprocessed_jax/train",
-    "Local path (GCS Fuse mount) to save the preprocessed NumPy arrays."
+_NUM_BATCHES = flags.DEFINE_integer(
+    "num_batches",
+    10,
+    "Number of batches to preprocess and save per worker.",
 )
-flags.DEFINE_integer("global_batch_size", 32768, "Global batch size for processing.")
-flags.DEFINE_integer("num_total_batches", 10000, "Total number of batches to preprocess across all workers.")
 
 def main(argv):
-    del argv  # Unused.
+  del argv
 
-    # --- Read environment variables for parallel execution ---
-    # These are injected by the Kubernetes Job
-    job_index = int(os.environ.get("JOB_COMPLETION_INDEX", 0))
-    parallelism = int(os.environ.get("PARALLELISM", 1))
+  # These will be set by the Kubernetes Job manifest
+  # The Python script is now robust to an empty string for the index.
+  parallelism = int(os.environ.get("PARALLELISM") or 1)
+  job_index = int(os.environ.get("JOB_COMPLETION_INDEX") or 0)
 
-    logging.info(f"--- Starting Preprocessing Worker {job_index + 1}/{parallelism} ---")
+  print(f"--- Starting Preprocessing Worker {job_index}/{parallelism} ---")
 
-    # Each worker calculates its own subset of batches to process
-    batches_per_worker = FLAGS.num_total_batches // parallelism
-    start_batch = job_index * batches_per_worker
-    end_batch = start_batch + batches_per_worker
+  data_config = DataConfig(
+      global_batch_size=32768,
+      pre_batch_size=4224,
+      is_training=True,
+      use_cached_data=False,
+  )
 
-    # The last worker picks up any remainder
-    if job_index == parallelism - 1:
-        end_batch = FLAGS.num_total_batches
-    
-    logging.info(f"This worker will process batches from {start_batch} to {end_batch - 1}")
+  # Using the public GCS bucket for the source data
+  file_pattern = "gs://zyc_dlrm/dataset/tb_tf_record_train_val/train/day_*/*"
 
-    data_loader = CriteoDataLoader(
-        file_pattern=FLAGS.source_data_path,
-        global_batch_size=FLAGS.global_batch_size,
-        is_training=False, 
-    )
-    data_iterator = data_loader.get_iterator()
+  data_loader = CriteoDataLoader(
+      file_pattern=file_pattern,
+      params=data_config,
+      # These parameters match the benchmark
+      num_dense_features=13,
+      vocab_sizes=[
+          40000000, 39060, 17295, 7424, 20265, 3, 7122, 1543, 63, 40000000,
+          3067956, 405282, 10, 2209, 11938, 155, 4, 976, 14, 40000000,
+          40000000, 40000000, 590152, 12973, 108, 36
+      ],
+      multi_hot_sizes=[
+          3, 2, 1, 2, 6, 1, 1, 1, 1, 7, 3, 8, 1, 6, 9, 5, 1, 1, 1, 12, 100,
+          27, 10, 3, 1, 1
+      ],
+      # Pass sharding info to the data loader
+      num_shards=parallelism,
+      shard_index=job_index,
+  )
 
-    # Create the output directory on the local filesystem (GCS Fuse mount)
-    os.makedirs(FLAGS.output_path, exist_ok=True)
+  output_path_train = os.path.join(_OUTPUT_DIR.value, "train")
+  output_path_eval = os.path.join(_OUTPUT_DIR.value, "eval")
 
-    # Skip to the start batch for this worker
-    for _ in range(start_batch):
-        try:
-            next(data_iterator)
-        except StopIteration:
-            logging.warning("Dataset ended before reaching start batch. Exiting.")
-            return
+  # Ensure the output directory exists
+  os.makedirs(output_path_train, exist_ok=True)
+  os.makedirs(output_path_eval, exist_ok=True)
+  
+  print(f"Worker {job_index}: Reading data and processing {_NUM_BATCHES.value} batches...")
+  
+  data_iterator = data_loader.get_iterator()
 
-    logging.info(f"Starting preprocessing...")
-    for i in range(start_batch, end_batch):
-        try:
-            batch = next(data_iterator)
-            
-            output_file_path = os.path.join(FLAGS.output_path, f"batch_{i:05d}.npz")
-            
-            # Save directly to the local filesystem path
-            with open(output_file_path, 'wb') as f:
-                np.savez_compressed(f, **batch)
+  for i in range(_NUM_BATCHES.value):
+    try:
+        batch = next(data_iterator)
+        
+        # Each worker saves its files with a unique name
+        output_file = os.path.join(
+            output_path_train, f"batch_{job_index}_{i}.npz"
+        )
+        
+        # Save the dictionary of numpy arrays
+        # Use np.savez_compressed for efficiency
+        np.savez_compressed(output_file, **batch)
 
-            if (i + 1) % 10 == 0:
-                logging.info(f"Worker {job_index}: Successfully processed and saved batch {i + 1}")
+        if i % 10 == 0:
+            print(f"Worker {job_index}: Saved {i+1}/{_NUM_BATCHES.value} batches...")
 
-        except StopIteration:
-            logging.warning("Reached the end of the dataset before processing all requested batches.")
-            break
-            
-    logging.info(f"--- Worker {job_index} Finished ---")
+    except StopIteration:
+      print(f"Worker {job_index}: Reached end of dataset.")
+      break
+
+  print(f"--- Worker {job_index} finished successfully ---")
 
 if __name__ == "__main__":
-    app.run(main)
+  app.run(main)

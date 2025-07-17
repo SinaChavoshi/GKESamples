@@ -1,0 +1,13 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+RUN pip install --no-cache-dir \
+    tensorflow-cpu \
+    absl-py \
+    numpy
+
+COPY dataloader.py .
+COPY preprocess_for_jax.py .
+
+CMD ["python3", "preprocess_for_jax.py"]
