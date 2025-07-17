@@ -1,103 +1,169 @@
-"""DLRM DCN v2 model implemented in Flax for JAX."""
+# Copyright 2024 RecML authors <recommendations-ml@google.com>.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""DLRM DCN v2 model."""
 
-from typing import List, Sequence
+from typing import List
 
 from flax import linen as nn
 import jax
 import jax.numpy as jnp
+from jax_tpu_embedding.sparsecore.lib.flax import embed
+from jax_tpu_embedding.sparsecore.lib.nn import embedding
+from jax_tpu_embedding.sparsecore.lib.nn import embedding_spec
 
-# Define a uniform initializer function for weights, as used in the reference.
+
+shard_map = jax.experimental.shard_map.shard_map
+Nested = embedding.Nested
+
+
 def uniform_init(bound: float):
-    def init(key, shape, dtype=jnp.float32):
-        return jax.random.uniform(
-            key, shape=shape, dtype=dtype, minval=-bound, maxval=bound
-        )
-    return init
+  def init(key, shape, dtype=jnp.float_):
+    return jax.random.uniform(
+        key,
+        shape=shape,
+        dtype=dtype,
+        minval=-bound,
+        maxval=bound
+    )
+  return init
+
 
 class DLRMDCNV2(nn.Module):
-    """A Flax implementation of the DLRM-DCNv2 model."""
-    vocab_sizes: Sequence[int]
-    num_dense_features: int = 13
-    embedding_dim: int = 128
-    bottom_mlp_dims: Sequence[int] = (512, 256, 128)
-    dcn_num_layers: int = 3
-    dcn_low_rank_dim: int = 512
-    top_mlp_dims: Sequence[int] = (1024, 1024, 512, 256)
+  """DLRM DCN v2 model."""
+  feature_specs: Nested[embedding_spec.FeatureSpec]
+  mesh: jax.sharding.Mesh
+  sharding_axis: str
+  global_batch_size: int
+  vocab_sizes: List[int]
+  embedding_size: int
+  bottom_mlp_dims: List[int]
+  top_mlp_dims = [1024, 1024, 512, 256, 1]
+  dcn_layers: int = 3
+  projection_dim: int = 512
 
-    def setup(self):
-        """Initializes the layers of the model."""
-        # --- Embedding Tables ---
-        # We create a list of embedding tables, one for each sparse feature.
-        self.embedding_tables = [
-            nn.Embed(
-                num_embeddings=vs,
-                features=self.embedding_dim,
-                name=f"embed_{i}",
-                embedding_init=uniform_init(1.0 / jnp.sqrt(vs)),
-            ) for i, vs in enumerate(self.vocab_sizes)
-        ]
+  def bottom_mlp(self, x):
+    for dim in self.bottom_mlp_dims:
+      previous_dim = x.shape[-1]
+      bound = jnp.sqrt(1.0 / previous_dim)
+      x = nn.Dense(
+          dim,
+          kernel_init=uniform_init(bound),
+          bias_init=uniform_init(bound),
+      )(x)
+      x = nn.relu(x)
+    return x
 
-        # --- Bottom MLP for processing dense features ---
-        bottom_mlp_layers = []
-        for i, dim in enumerate(self.bottom_mlp_dims):
-            bottom_mlp_layers.append(nn.Dense(features=dim, name=f"bottom_mlp_{i}"))
-            bottom_mlp_layers.append(nn.relu)
-        self.bottom_mlp = nn.Sequential(bottom_mlp_layers)
+  def top_mlp(self, x):
+    previous_dim = x.shape[-1]
+    for dim in self.top_mlp_dims[:-1]:
+      bound = jnp.sqrt(1.0 / previous_dim)
+      x = nn.Dense(
+          dim,
+          kernel_init=uniform_init(bound),
+          bias_init=uniform_init(bound),
+      )(x)
+      x = nn.relu(x)
+      previous_dim = dim
 
-        # --- DCN V2 Cross Network Layers ---
-        # Using low-rank decomposition (U and V matrices) for efficiency.
-        self.v_kernels = [
-            nn.Dense(features=self.dcn_low_rank_dim, use_bias=False, name=f"dcn_v_{i}")
-            for i in range(self.dcn_num_layers)
-        ]
-        # The output dimension of U must match the concatenated feature dimension.
-        # This will be calculated based on the input shape in the __call__ method.
-        self.u_kernels = [
-            nn.Dense(features=self.num_dense_features + len(self.vocab_sizes) * self.embedding_dim, use_bias=False, name=f"dcn_u_{i}")
-            for i in range(self.dcn_num_layers)
-        ]
-        self.dcn_biases = [
-             self.param(f"dcn_bias_{i}", nn.initializers.zeros, (self.num_dense_features + len(self.vocab_sizes) * self.embedding_dim,))
-             for i in range(self.dcn_num_layers)
-        ]
+    bound = jnp.sqrt(1.0 / previous_dim)
+    x = nn.Dense(
+        self.top_mlp_dims[-1],
+        kernel_init=uniform_init(bound),
+        bias_init=uniform_init(bound),
+    )(x)
+    x = nn.sigmoid(x)
+    return x
 
-        # --- Top MLP ---
-        top_mlp_layers = []
-        for i, dim in enumerate(self.top_mlp_dims):
-            top_mlp_layers.append(nn.Dense(features=dim, name=f"top_mlp_{i}"))
-            top_mlp_layers.append(nn.relu)
-        top_mlp_layers.append(nn.Dense(features=1, name="top_mlp_final"))
-        self.top_mlp = nn.Sequential(top_mlp_layers)
+  def dcn_layer(self, x0):
+    xl = x0
+    input_dim = x0.shape[-1]
 
-    def __call__(self, dense_features, sparse_features_dict):
-        """Defines the forward pass of the model."""
-        # Process dense features through the bottom MLP.
-        dense_x = self.bottom_mlp(dense_features)
+    for i in range(self.dcn_layers):
+      u_kernel = self.param(
+          f'u_kernel_{i}',
+          nn.initializers.xavier_normal(),
+          (input_dim, self.projection_dim),
+      )
+      v_kernel = self.param(
+          f'v_kernel_{i}',
+          nn.initializers.xavier_normal(),
+          (self.projection_dim, input_dim),
+      )
+      bias = self.param(f'bias_{i}', nn.initializers.zeros, (input_dim,))
 
-        # Process sparse features: embedding lookup and mean reduction.
-        sparse_embeds = []
-        for i, emb_table in enumerate(self.embedding_tables):
-            # The model receives sparse features as a dictionary.
-            sparse_ids = sparse_features_dict[str(i)]
-            embedding_vector = emb_table(sparse_ids)
-            # Average embeddings for multi-hot features.
-            sparse_embeds.append(jnp.mean(embedding_vector, axis=1))
+      u_output = jnp.matmul(xl, u_kernel)
+      v_output = jnp.matmul(u_output, v_kernel)
+      v_output += bias
 
-        # Concatenate dense and sparse features to form the DCN input.
-        x0 = jnp.concatenate([dense_x] + sparse_embeds, axis=1)
+      xl = x0 * v_output + xl
 
-        # DCN V2 Cross Network forward pass.
-        xl = x0
-        for i in range(self.dcn_num_layers):
-            v_out = self.v_kernels[i](xl)
-            u_out = self.u_kernels[i](v_out)
-            xl = x0 * (u_out + self.dcn_biases[i]) + xl
+    return xl
 
-        # Concatenate bottom MLP output with DCN output for the top MLP.
-        top_mlp_input = jnp.concatenate([dense_x, xl], axis=1)
-        
-        # Final prediction logits.
-        logits = self.top_mlp(top_mlp_input)
-        
-        return jnp.squeeze(logits)
+  @nn.compact
+  def __call__(
+      self, dense_features, dense_lookups, embedding_lookups
+  ):
+    dense_outputs = self.bottom_mlp(dense_features)
+    dense_embeddings = []
+    processed_dense_lookups = []
+    for key, value in dense_lookups.items():
+        embeddings = nn.Embed(self.vocab_sizes[int(key)], self.embedding_size)(value)
+        embeddings = jnp.sum(embeddings, axis=-2)
+        processed_dense_lookups.append(embeddings)
+
+    if processed_dense_lookups:
+        # Stack along axis 1 to get (global_batch_size, num_dense_lookups, embedding_size)
+        stacked_dense_embeddings = jnp.stack(processed_dense_lookups, axis=1)
+    else:
+        # Handle empty list if no dense_lookups are provided
+        stacked_dense_embeddings = jnp.empty((self.global_batch_size, 0, self.embedding_size))
+
+    #dense_embeddings = jnp.concatenate(dense_embeddings, axis=-2)
+    dense_embeddings = stacked_dense_embeddings
+    #jax.debug.print("[chandra-debug] dense_embeddings shape: {}", dense_embeddings.shape)
+
+    sparse_embeddings = embed.SparseCoreEmbed(
+        feature_specs=self.feature_specs,
+        mesh=self.mesh,
+        sharding_axis=self.sharding_axis,
+    )(embedding_lookups)
+    sparse_embeddings = jax.tree.flatten(sparse_embeddings)
+    concatenated_embeddings = jnp.concatenate(sparse_embeddings[0], axis=1)
+    # Concatenate dense features and embeddings. We're using global batch size
+    # here because we're doing global view of the data in the training loop.
+    interaction_args = jax.lax.concatenate(
+        [
+            dense_outputs.reshape(
+                (self.global_batch_size, 1, self.embedding_size)
+            ),
+            concatenated_embeddings.reshape((
+                self.global_batch_size,
+                26 - len(dense_lookups),
+                self.embedding_size,
+            )),
+            dense_embeddings.reshape((
+                self.global_batch_size,
+                len(dense_lookups.keys()),
+                self.embedding_size,
+            )),
+        ],
+        dimension=1,
+    )
+    interaction_args = interaction_args.reshape((self.global_batch_size, -1))
+    interaction_outputs = self.dcn_layer(interaction_args)
+    predictions = self.top_mlp(interaction_outputs)
+    predictions = jnp.reshape(predictions, (-1,))
+
+    return predictions
 
