@@ -12,7 +12,7 @@ spec:
         gke-gcsfuse/volumes: "true"
     spec:
       serviceAccountName: tpu-training-sa
-      restartPolicy: OnFailure
+      restartPolicy: Never
       volumes:
       - name: gcs-fuse-csi-volume
         csi:

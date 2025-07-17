@@ -1,7 +1,7 @@
 import dataclasses
 import tensorflow as tf
 
-# --- FIX: Define constants at the top level so they can be imported ---
+# --- Constants ---
 NUM_DENSE_FEATURES = 13
 VOCAB_SIZES = [
     40000000, 39060, 17295, 7424, 20265, 3, 7122, 1543, 63, 40000000,
@@ -18,7 +18,7 @@ NUM_SPARSE_FEATURES = len(VOCAB_SIZES)
 class DataConfig:
   """Configuration for data loading parameters."""
   global_batch_size: int
-  pre_batch_size: int
+  pre_batch_size: int 
   is_training: bool
 
 class CriteoDataLoader:
@@ -45,19 +45,20 @@ class CriteoDataLoader:
         return feature_spec
 
     def _parse_fn(self, features):
-        """Parses a single tf.train.Example into the format expected by the model."""
+        """Parses a single tf.train.Example into a dictionary of tensors."""
         label = tf.cast(features.pop('label'), tf.float32)
 
         dense_features_list = []
         for i in range(1, self._num_dense_features + 1):
             dense_features_list.append(features[f'dense-feature-{i}'])
-        dense_features = tf.concat(dense_features_list, axis=1)
+        
+        dense_features = tf.concat(dense_features_list, axis=0)
+        dense_features = tf.expand_dims(dense_features, axis=0)
 
         sparse_features = {}
         for i in range(self._num_dense_features + 1, self._num_dense_features + len(self._vocab_sizes) + 1):
             model_feature_index = i - (self._num_dense_features + 1)
-            sparse_ids = tf.sparse.to_dense(features[f'sparse-feature-{i}'])
-            sparse_features[f"{model_feature_index}"] = sparse_ids
+            sparse_features[f"{model_feature_index}"] = tf.sparse.to_dense(features[f'sparse-feature-{i}'])
 
         return {
             "dense_features": dense_features,
@@ -77,10 +78,25 @@ class CriteoDataLoader:
             num_parallel_calls=tf.data.AUTOTUNE,
             deterministic=not self._params.is_training,
         )
-        dataset = dataset.batch(self._params.global_batch_size, drop_remainder=self._params.is_training)
+        
         dataset = dataset.map(
             lambda x: tf.io.parse_example(x, self._get_feature_spec()),
             num_parallel_calls=tf.data.AUTOTUNE,
         )
         dataset = dataset.map(self._parse_fn, num_parallel_calls=tf.data.AUTOTUNE)
+        
+        padded_shapes = {
+            "dense_features": tf.TensorShape([1, self._num_dense_features]),
+            "clicked": tf.TensorShape([1]), 
+            "sparse_features": {
+                f"{i}": tf.TensorShape([None]) for i in range(len(self._vocab_sizes))
+            }
+        }
+
+        dataset = dataset.padded_batch(
+            self._params.global_batch_size, 
+            padded_shapes=padded_shapes, 
+            drop_remainder=True
+        )
+
         return iter(dataset.prefetch(tf.data.AUTOTUNE))
