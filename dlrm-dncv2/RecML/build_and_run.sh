@@ -26,3 +26,8 @@ kubectl logs -f jobs/jax-dlrm-benchmark-v6e-32chip-worker-0
 
 # Pusher to update the remote workers
 ./sync_specific_files_scp.sh  dlrm_main.py 
+
+gcloud alpha compute tpus tpu-vm ssh ${TPU_NAME} --project ${PROJECT} --zone ${ZONE} --worker=all  --command="cd RecML/recml/inference/benchmarks/DLRM_DCNv2/ && chmod +x ./train_and_checkpoint.sh && cd ~/RecML && TPU_NAME=${TPU_NAME} ./recml/inference/benchmarks/DLRM_DCNv2/train_and_checkpoint.sh" 2>&1 | tee multihost.txt
+
+gcloud alpha compute tpus tpu-vm ssh ${TPU_NAME} --project ${PROJECT} --zone ${ZONE} --worker=all  --command="kill -9 $(ps -A | grep \"train_and_checkpoint\" | grep -v \"grep\" | awk '{print $1}')"
+

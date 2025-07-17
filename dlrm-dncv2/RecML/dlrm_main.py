@@ -48,7 +48,8 @@ import orbax.checkpoint as ocp
 
 
 jax.distributed.initialize()
-jax.profiler.start_server(9999)
+if jax.process_index() == 0:
+  jax.profiler.start_server(9999)
 partial = functools.partial
 info = logging.info
 shard_map = jax.experimental.shard_map.shard_map
@@ -342,12 +343,12 @@ def eval_loop(
     auc_val = sklearn_auc(fpr_sorted, tpr_sorted)
   except (ValueError, ZeroDivisionError):
     auc_val = 0.5
-    info(
-        "Evaluation results: loss=%.5f, accuracy=%.5f, auc=%.5f",
-        loss_val,
-        accuracy_val,
-        auc_val,
-    )
+  info(
+      "Evaluation results: loss=%.5f, accuracy=%.5f, auc=%.5f",
+      loss_val,
+      accuracy_val,
+      auc_val,
+  )
 
 
 @partial(jax.jit, static_argnums=0)

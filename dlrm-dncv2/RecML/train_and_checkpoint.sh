@@ -5,7 +5,7 @@ export XLA_FLAGS=
 
 # Variables from the original script, kept for consistency.
 export LEARNING_RATE=0.0034
-export BATCH_SIZE=4224
+export BATCH_SIZE=16896
 export EMBEDDING_SIZE=128
 export NUM_STEPS=28000
 export CHECKPOINT_INTERVAL=1500
@@ -18,7 +18,7 @@ export RESTORE_CHECKPOINT=true
 
 # Use the GCS bucket you provided for model checkpoints. This is essential for
 # multi-host training as all pods need a shared location to save and restore from.
-export MODEL_DIR="gs://dlrm-training-chavoshi-gke-dev/checkpoints/"
+export MODEL_DIR="gs://chavoshi-dlrm-training/checkpoints/"
 
 # Use the public Criteo dataset paths from the original script.
 export FILE_PATTERN="gs://qinyiyan-vm/mlperf-dataset/criteo_merge_balanced_4224/train-*"

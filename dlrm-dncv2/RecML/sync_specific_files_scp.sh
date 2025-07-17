@@ -1,8 +1,9 @@
 #!/bin/bash
 
 WORKERS=(t1v-n-c690a4fe-w-2 t1v-n-c690a4fe-w-1 t1v-n-c690a4fe-w-0 t1v-n-c690a4fe-w-3)
-REMOTE_DEST_PATH="~/RecML/recml/inference/models/jax/DLRM_DCNv2/" 
-
+# REMOTE_DEST_PATH="~/RecML/recml/inference/models/jax/DLRM_DCNv2/" 
+# REMOTE_DEST_PATH="~/RecML/" 
+REMOTE_DEST_PATH="~/RecML/recml/inference/benchmarks/DLRM_DCNv2/"
 
 if [ "$#" -eq 0 ]; then
     echo "ERROR: No files provided."
