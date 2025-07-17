@@ -27,6 +27,7 @@ echo "3. Applying Kubernetes job YAML..."
 envsubst < job_preprocess.yaml | kubectl apply -f -
 
 echo "✅ Job 'dlrm-preprocess-job' submitted."
-kubectl get pods
 sleep 10
+kubectl get pods
+sleep 5
 kubectl logs -f jobs/dlrm-preprocess-job 

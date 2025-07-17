@@ -3,18 +3,16 @@ kind: Job
 metadata:
   name: dlrm-preprocess-job
 spec:
-  # Run 8 pods in parallel to speed up processing
   parallelism: 8
   completions: 8
   backoffLimit: 0
   template:
-    # --- The metadata block with the Fuse annotation is here ---
     metadata:
       annotations:
         gke-gcsfuse/volumes: "true"
     spec:
       serviceAccountName: tpu-training-sa
-      restartPolicy: Never
+      restartPolicy: OnFailure
       volumes:
       - name: gcs-fuse-csi-volume
         csi:
@@ -30,12 +28,17 @@ spec:
         - name: gcs-fuse-csi-volume
           mountPath: /gcs
         env:
-        # These are passed to the python script to coordinate work
-        - name: PARALLELISM
-          value: "8" # Must match spec.parallelism
         - name: JOB_COMPLETION_INDEX
           valueFrom:
             fieldRef:
-              # This field provides the unique index (0 to 7) for each pod
               fieldPath: metadata.annotations['batch.kubernetes.io/job-completion-index']
+        - name: PARALLELISM
+          value: "8"
+        resources:
+          requests:
+            memory: "800Gi"
+            cpu: "180"
+          limits:
+            memory: "920Gi"
+            cpu: "223"
 
