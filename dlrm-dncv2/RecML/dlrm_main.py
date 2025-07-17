@@ -48,8 +48,7 @@ import orbax.checkpoint as ocp
 
 
 jax.distributed.initialize()
-if jax.process_index() == 0:
-  jax.profiler.start_server(9999)
+jax.profiler.start_server(9999)
 partial = functools.partial
 info = logging.info
 shard_map = jax.experimental.shard_map.shard_map
@@ -323,24 +322,11 @@ def eval_loop(
       break
   
   info("Finished evaluation after %d steps.", step_count)
-  metrics_on_host = jax.device_get(train_metrics_collection)
+  metrics_on_host = jax.device_get(eval_metrics_collection)
+  loss_val = metrics_on_host.loss.compute()
+  accuracy_val = metrics_on_host.accuracy.compute()
   try:
-    tp = metrics_on_host.auc.true_positives
-    fp = metrics_on_host.auc.false_positives
-    tn = metrics_on_host.auc.true_negatives
-    fn = metrics_on_host.auc.false_negatives
-
-    total_positives = tp + fn
-    total_negatives = tn + fp
-
-    tpr = np.divide(tp, total_positives, where=(total_positives != 0))
-    fpr = np.divide(fp, total_negatives, where=(total_negatives != 0))
-
-    sort_idx = np.argsort(fpr)
-    fpr_sorted = fpr[sort_idx]
-    tpr_sorted = tpr[sort_idx]
-
-    auc_val = sklearn_auc(fpr_sorted, tpr_sorted)
+    auc_val = metrics_on_host.auc.compute()
   except (ValueError, ZeroDivisionError):
     auc_val = 0.5
   info(
@@ -467,8 +453,23 @@ def train_loop(
       end_time = time.time()
       metrics_on_host = jax.device_get(train_metrics_collection)
       try:
-        with jax.default_device(jax.devices("cpu")[0]):
-          auc_val = metrics_on_host.auc.compute()
+        tp = metrics_on_host.auc.true_positives
+        fp = metrics_on_host.auc.false_positives
+        tn = metrics_on_host.auc.true_negatives
+        fn = metrics_on_host.auc.false_negatives
+
+        total_positives = tp + fn
+        total_negatives = tn + fp
+    
+        tpr = np.divide(tp, total_positives, where=(total_positives != 0))
+        fpr = np.divide(fp, total_negatives, where=(total_negatives != 0))
+
+        sort_idx = np.argsort(fpr)
+        fpr_sorted = fpr[sort_idx]
+        tpr_sorted = tpr[sort_idx]
+    
+        auc_val = sklearn_auc(fpr_sorted, tpr_sorted)
+
       except (ValueError, ZeroDivisionError):
         auc_val = 0.5
       info(
