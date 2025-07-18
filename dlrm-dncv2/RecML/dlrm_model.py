@@ -28,7 +28,7 @@ Nested = embedding.Nested
 
 
 def uniform_init(bound: float):
-  def init(key, shape, dtype=jnp.float_):
+  def init(key, shape, dtype=jnp.float32):
     return jax.random.uniform(
         key,
         shape=shape,

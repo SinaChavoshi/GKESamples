@@ -239,7 +239,7 @@ class DLRMDataLoader:
         self.feature_specs,
         self.mesh.local_mesh.size,
         self.mesh.size,
-        num_sc_per_device=4,
+        num_sc_per_device=2,
         sharding_strategy="MOD",
         allow_id_dropping=_ALLOW_ID_DROPPING.value,
     )[0]
@@ -451,6 +451,11 @@ def train_loop(
     current_step = step + 1
     if current_step % _LOGGING_INTERVAL.value == 0:
       end_time = time.time()
+      
+      elapsed_time = end_time - start_time
+      examples_processed = _BATCH_SIZE.value * _LOGGING_INTERVAL.value
+      throughput = examples_processed / elapsed_time
+
       metrics_on_host = jax.device_get(train_metrics_collection)
       try:
         tp = metrics_on_host.auc.true_positives
@@ -472,12 +477,14 @@ def train_loop(
 
       except (ValueError, ZeroDivisionError):
         auc_val = 0.5
+
       info(
-          "Step %d: loss=%.5f, accuracy=%.5f, auc=%.5f, step_time=%.2fms",
+          "Step %d: loss=%.5f, accuracy=%.5f, auc=%.5f, throughput=%.2f ex/sec, step_time=%.2fms",
           current_step, metrics_on_host.loss.compute(),
           metrics_on_host.accuracy.compute(), auc_val,
-          (end_time - start_time) * 1000 / _LOGGING_INTERVAL.value
-      )
+          throughput,
+          (elapsed_time * 1000 / _LOGGING_INTERVAL.value)
+      )      
       train_metrics_collection = TrainMetrics.empty()
       start_time = time.time()
 
@@ -547,8 +554,6 @@ def run_evaluation_only(
       global_sharding=global_sharding,
   )
   _, dense_features, dense_lookups, embedding_lookups = next(dummy_producer)
-  # Do not call stop() on the dummy_producer.
-  # Let its daemon threads exit with the program.
 
   params_structure = jax.eval_shape(
       lambda: model.init(
@@ -604,22 +609,22 @@ def main(argv):
   _, feature_specs = create_feature_specs(VOCAB_SIZES)
 
   def _get_max_ids_per_partition(name: str, batch_size: int) -> int:
-    return 4096
+    return 10000
 
   def _get_max_unique_ids_per_partition(name: str, batch_size: int) -> int:
-    return 2048
+    return 5000
 
   embedding.auto_stack_tables(
       feature_specs,
       global_device_count=jax.device_count(),
       stack_to_max_ids_per_partition=_get_max_ids_per_partition,
       stack_to_max_unique_ids_per_partition=_get_max_unique_ids_per_partition,
-      num_sc_per_device=4,
+      num_sc_per_device=2,
   )
   embedding.prepare_feature_specs_for_training(
       feature_specs,
       global_device_count=jax.device_count(),
-      num_sc_per_device=4,
+      num_sc_per_device=2,
   )
 
   model = DLRMDCNV2(
@@ -640,4 +645,3 @@ def main(argv):
 
 if __name__ == "__main__":
   app.run(main)
-

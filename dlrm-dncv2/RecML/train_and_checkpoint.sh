@@ -1,5 +1,6 @@
 #!/bin/bash
 
+export TPU_NAME="chavoshi-dlrm-dnc-v2-benchmark"
 export LIBTPU_INIT_ARGS=
 export XLA_FLAGS=
 
@@ -8,8 +9,8 @@ export LEARNING_RATE=0.0034
 export BATCH_SIZE=16896
 export EMBEDDING_SIZE=128
 export NUM_STEPS=28000
-export CHECKPOINT_INTERVAL=1500
-export EVAL_INTERVAL=1500
+export CHECKPOINT_INTERVAL=28000
+export EVAL_INTERVAL=28000
 export EVAL_STEPS=660
 export MODE=train
 export EMBEDDING_THRESHOLD=21000
@@ -22,11 +23,9 @@ export MODEL_DIR="gs://chavoshi-dlrm-training/checkpoints/"
 
 # Use the public Criteo dataset paths from the original script.
 export FILE_PATTERN="gs://qinyiyan-vm/mlperf-dataset/criteo_merge_balanced_4224/train-*"
-export EVAL_FILE_PATTERN="gs://qinyiyan-vm/mlperf-dataset/criteo_merge_balanced_4224/eval-*"
+export EVAL_FILE_PATTERN="gs://qinyiyan-vm/mlperf-dataset/criteo_merge_balanced_4224/train-*"
 
-# Execute the main Python training script with the configured variables.
-# We add the '-u' flag for unbuffered output to aid in debugging distributed jobs.
-python -u recml/inference/models/jax/DLRM_DCNv2/dlrm_main.py \
+python recml/inference/models/jax/DLRM_DCNv2/dlrm_main.py \
 --learning_rate=${LEARNING_RATE} \
 --batch_size=${BATCH_SIZE} \
 --embedding_size=${EMBEDDING_SIZE} \
