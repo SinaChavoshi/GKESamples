@@ -3,7 +3,7 @@
 WORKERS=(t1v-n-c6950a03-w-2 t1v-n-c6950a03-w-0 t1v-n-c6950a03-w-1 t1v-n-c6950a03-w-3)
 # REMOTE_DEST_PATH="~/RecML/recml/inference/models/jax/DLRM_DCNv2/" 
 # REMOTE_DEST_PATH="~/RecML/" 
-REMOTE_DEST_PATH="~/RecML/recml/inference/benchmarks/DLRM_DCNv2/"
+# REMOTE_DEST_PATH="~/RecML/recml/inference/benchmarks/DLRM_DCNv2/"
 
 if [ "$#" -eq 0 ]; then
     echo "ERROR: No files provided."

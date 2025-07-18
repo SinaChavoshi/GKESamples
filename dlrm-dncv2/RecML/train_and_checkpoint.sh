@@ -19,7 +19,7 @@ export RESTORE_CHECKPOINT=true
 
 # Use the GCS bucket you provided for model checkpoints. This is essential for
 # multi-host training as all pods need a shared location to save and restore from.
-export MODEL_DIR="gs://chavoshi-dlrm-training/checkpoints/"
+export MODEL_DIR="gs://chavoshi-dlrm-training/v6e-16-sc/"
 
 # Use the public Criteo dataset paths from the original script.
 export FILE_PATTERN="gs://qinyiyan-vm/mlperf-dataset/criteo_merge_balanced_4224/train-*"
