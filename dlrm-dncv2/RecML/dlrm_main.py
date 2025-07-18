@@ -438,10 +438,10 @@ def train_loop(
     new_params = embed_optimizer.apply_updates_for_sc_model(params, updates)
     return new_params, new_opt_state, metrics_collection
 
+  overall_start_time = time.time()
+  
   start_time = time.time()
-  total_examples = 0
   train_metrics_collection = TrainMetrics.empty()
-
   for step in range(initial_step, _NUM_STEPS.value):
     with jax.profiler.StepTraceAnnotation("train_step", step_num=step):
       labels, dense_features, dense_lookups, embedding_lookups = next(producer)
@@ -449,7 +449,6 @@ def train_loop(
           params, labels, dense_features, dense_lookups, embedding_lookups,
           opt_state, train_metrics_collection
       )
-      total_examples += _BATCH_SIZE.value
 
     current_step = step + 1
     if current_step % _LOGGING_INTERVAL.value == 0:
@@ -523,15 +522,19 @@ def train_loop(
   
   # --- Add Final Summary Throughput ---
   end_of_training_time = time.time()
-  total_training_time = end_of_training_time - start_time
-  summary_throughput = total_examples / total_training_time
-  info("="*50)
-  info("End of Training Summary")
-  info(f"Total steps: {_NUM_STEPS.value}")
-  info(f"Total examples processed: {total_examples}")
-  info(f"Total training time: {total_training_time:.2f} seconds")
-  info(f"Overall training throughput: {summary_throughput:.2f} examples/sec")
-  info("="*50)
+  total_training_time = end_of_training_time - overall_start_time
+  total_examples_processed = _NUM_STEPS.value * _BATCH_SIZE.value
+  
+  # This block will only execute on the primary host (worker 0)
+  if jax.process_index() == 0:
+    summary_throughput = total_examples_processed / total_training_time
+    info("="*50)
+    info("End of Training Summary")
+    info(f"Total steps: {_NUM_STEPS.value}")
+    info(f"Total examples processed: {total_examples_processed}")
+    info(f"Total training time: {total_training_time:.2f} seconds")
+    info(f"Overall training throughput: {summary_throughput:.2f} examples/sec")
+    info("="*50)
   # --- End Final Summary ---
 
   producer.stop()

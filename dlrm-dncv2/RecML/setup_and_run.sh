@@ -6,13 +6,13 @@ export ZONE="us-east5-a"
 
 
 # Pusher to update the remote workers
-REMOTE_DEST_PATH="~/RecML/recml/inference/models/jax/DLRM_DCNv2/" 
+export REMOTE_DEST_PATH="~/RecML/recml/inference/models/jax/DLRM_DCNv2/" 
 ./sync_specific_files_scp.sh  dlrm_main.py 
 
-REMOTE_DEST_PATH="~/RecML/" 
+export REMOTE_DEST_PATH="~/RecML/" 
 ./sync_specific_files_scp.sh  requirements.txt
 
-REMOTE_DEST_PATH="~/RecML/recml/inference/benchmarks/DLRM_DCNv2/"
+export REMOTE_DEST_PATH="~/RecML/recml/inference/benchmarks/DLRM_DCNv2/"
 ./sync_specific_files_scp.sh   train_and_checkpoint.sh 
 
 
