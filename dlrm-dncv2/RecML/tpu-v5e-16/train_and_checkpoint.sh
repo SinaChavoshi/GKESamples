@@ -1,13 +1,13 @@
 #!/bin/bash
 
-export TPU_NAME="chavoshi-dlrm-dnc-v2-benchmark"
+export TPU_NAME="chavoshi-dlrm-dnc-v2-benchmark-tpu-v5e-16"
 export LIBTPU_INIT_ARGS=
 export XLA_FLAGS=
 
 # Variables from the original script, kept for consistency.
 export LEARNING_RATE=0.0034
 export BATCH_SIZE=16896
-export EMBEDDING_SIZE=128
+export EMBEDDING_SIZE=8
 export NUM_STEPS=28000
 export CHECKPOINT_INTERVAL=28000
 export EVAL_INTERVAL=28000

@@ -239,7 +239,7 @@ class DLRMDataLoader:
         self.feature_specs,
         self.mesh.local_mesh.size,
         self.mesh.size,
-        num_sc_per_device=2,
+        num_sc_per_device=4,
         sharding_strategy="MOD",
         allow_id_dropping=_ALLOW_ID_DROPPING.value,
     )[0]
@@ -638,12 +638,12 @@ def main(argv):
       global_device_count=jax.device_count(),
       stack_to_max_ids_per_partition=_get_max_ids_per_partition,
       stack_to_max_unique_ids_per_partition=_get_max_unique_ids_per_partition,
-      num_sc_per_device=2,
+      num_sc_per_device=4,
   )
   embedding.prepare_feature_specs_for_training(
       feature_specs,
       global_device_count=jax.device_count(),
-      num_sc_per_device=2,
+      num_sc_per_device=4,
   )
 
   model = DLRMDCNV2(
