@@ -4,7 +4,6 @@ import numpy as np
 import tensorflow as tf
 import keras
 import jax
-# Make sure to install keras-rs: pip install keras-rs
 import keras_rs
 from typing import Dict
 
@@ -63,6 +62,7 @@ class DLRM(keras.Model):
                     projection_dim=DCN_LOW_RANK_DIM, use_bias=True
                 )
             )
+
         self.top_mlp = keras.Sequential([
             keras.layers.Dense(1024, activation="relu"),
             keras.layers.Dense(1024, activation="relu"),
@@ -83,11 +83,14 @@ class DLRM(keras.Model):
         embedding_vectors = list(embedding_outputs_dict.values())
 
         x0 = self.concat(embedding_vectors + [bottom_mlp_output])
+
         x = x0
         for cross_layer in self.feature_cross_layers:
             x = cross_layer(x0, x)
         interaction_output = x
+
         top_mlp_input = self.concat([bottom_mlp_output, interaction_output])
+        
         return self.top_mlp(top_mlp_input)
 
 def create_dataset_from_tfrecords(input_path, is_training, global_batch_size):
@@ -182,6 +185,7 @@ def main():
     
     train_dataset = create_dataset_from_tfrecords(train_data_path, is_training=True, global_batch_size=GLOBAL_BATCH_SIZE)
     eval_dataset = create_dataset_from_tfrecords(eval_data_path, is_training=False, global_batch_size=GLOBAL_BATCH_SIZE)
+
     sample_inputs, _ = next(iter(train_dataset))
     preprocessed_output = embedding_layer.preprocess(sample_inputs["sparse_features"])
     preprocessed_spec = tf.nest.map_structure(tf.TensorSpec.from_tensor, preprocessed_output)
@@ -207,11 +211,12 @@ def main():
         lambda: preprocessed_generator(eval_dataset, is_training=False),
         output_signature=output_signature
     )
+
     model = DLRM(embedding_layer=embedding_layer)
     optimizer = keras.optimizers.Adam(learning_rate=0.00025) 
     
     model.compile(optimizer=optimizer, loss="binary_crossentropy", metrics=["accuracy", "auc"], jit_compile=True)
-
+    
     throughput_callback = ThroughputLogger(batch_size=GLOBAL_BATCH_SIZE)
     train_steps = 2
     validation_steps = 1
