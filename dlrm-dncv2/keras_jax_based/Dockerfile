@@ -18,8 +18,8 @@ RUN pip install --no-cache-dir --upgrade pip && \
     jax[tpu] -f https://storage.googleapis.com/jax-releases/libtpu_releases.html && \
     pip install --no-cache-dir \
     tensorflow-cpu && \
-    pip install --no-cache-dir git+https://github.com/keras-team/keras-rs.git \
-    pip install --no-cache-dir git+https://github.com/keras-team/keras.git 
+    pip install --no-cache-dir keras-rs -f git+https://github.com/keras-team/keras-rs.git && \
+    pip install --no-cache-dir keras -f git+https://github.com/keras-team/keras.git && \ 
 
 COPY train_jax.py .
 
