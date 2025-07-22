@@ -1,0 +1,62 @@
+# jobset-tf-v6e-16chip.yaml
+apiVersion: jobset.x-k8s.io/v1alpha2
+kind: JobSet
+metadata:
+  name: tf-v6e-16chip-jobset
+spec:
+  failurePolicy:
+    maxRestarts: 0
+  successPolicy:
+    operator: "All"
+    targetReplicatedJobs:
+    - "tpu-controller"
+  replicatedJobs:
+    - name: grpc-worker
+      replicas: 4
+      template:
+        spec:
+          parallelism: 1
+          completions: 1
+          backoffLimit: 0
+          template:
+            spec:
+              nodeSelector:
+                cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
+                cloud.google.com/gke-tpu-topology: 4x4
+              tolerations:
+              - key: "google.com/tpu"
+                operator: "Exists"
+                effect: "NoSchedule"
+              containers:
+              - name: tpu-worker
+                image: us-east5-docker.pkg.dev/chavoshi-gke-dev/tpu-repo/tf-tpu-worker:latest
+                ports:
+                - containerPort: 8470
+                securityContext:
+                  privileged: true
+                resources:
+                  limits:
+                    google.com/tpu: 4
+
+    # This job defines the single controller pod that runs on a CPU node.
+    - name: tpu-controller
+      template:
+        spec:
+          parallelism: 1
+          completions: 1
+          backoffLimit: 3
+          template:
+            spec:
+              restartPolicy: OnFailure
+              containers:
+              - name: tpu-controller
+                image: us-east5-docker.pkg.dev/chavoshi-gke-dev/tpu-repo/tf-tpu-controller:latest
+                env:
+                - name: GRPC_WORKER_NAME
+                  value: "grpc-worker"
+                - name: NUM_REPLICAS
+                  value: "4" # Correct: The controller connects to 4 workers.
+                - name: JOBSET_NAME
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.annotations['jobset.sigs.k8s.io/jobset-name']
