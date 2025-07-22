@@ -1,3 +1,4 @@
+# tfjob-v6e-16chip.yaml
 apiVersion: kubeflow.org/v1
 kind: TFJob
 metadata:
@@ -21,14 +22,20 @@ spec:
           containers:
             - name: tensorflow
               image: us-east5-docker.pkg.dev/chavoshi-gke-dev/tpu-repo/tf-tpu-unified:latest
-              command:
-                - "python"
-                - "main.py"
+              command: ["python", "main.py"]
+              env:
+                - name: TPU_WORKER_HOSTNAMES
+                  value: "tf-mnist-v6e-16chip-master-0,tf-mnist-v6e-16chip-worker-0,tf-mnist-v6e-16chip-worker-1,tf-mnist-v6e-16chip-worker-2"
+                # **THIS IS THE FINAL, CORRECT FLAG FROM THE BUG REPORT**
+                - name: LIBTPU_INIT_ARGS
+                  value: "--2a886c8_chip_config_name=megachip_tccontrol"
+              securityContext:
+                privileged: true
               resources:
                 limits:
                   google.com/tpu: "4"
     Worker:
-      replicas: 3 # 1 Master + 3 Workers = 4 total nodes
+      replicas: 3
       restartPolicy: OnFailure
       template:
         spec:
@@ -42,9 +49,15 @@ spec:
           containers:
             - name: tensorflow
               image: us-east5-docker.pkg.dev/chavoshi-gke-dev/tpu-repo/tf-tpu-unified:latest
-              command:
-                - "python"
-                - "main.py"
+              command: ["python", "main.py"]
+              env:
+                - name: TPU_WORKER_HOSTNAMES
+                  value: "tf-mnist-v6e-16chip-master-0,tf-mnist-v6e-16chip-worker-0,tf-mnist-v6e-16chip-worker-1,tf-mnist-v6e-16chip-worker-2"
+                # **THIS IS THE FINAL, CORRECT FLAG FROM THE BUG REPORT**
+                - name: LIBTPU_INIT_ARGS
+                  value: "--2a886c8_chip_config_name=megachip_tccontrol"
+              securityContext:
+                privileged: true
               resources:
                 limits:
                   google.com/tpu: "4"

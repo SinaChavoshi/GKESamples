@@ -14,7 +14,7 @@ spec:
         spec:
           nodeSelector:
             cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
-            cloud.google.com/gke-tpu-topology: 2x4
+            cloud.google.com/gke-tpu-topology: 4x4
           tolerations:
             - key: "google.com/tpu"
               operator: "Exists"
@@ -23,22 +23,28 @@ spec:
             - name: tensorflow
               image: us-east5-docker.pkg.dev/chavoshi-gke-dev/tpu-repo/tf-tpu-unified:latest
               command: ["python", "main.py"]
-              # **FIX ADDED HERE**: Manually provide the list of all workers
-              # to the low-level TPU driver.
               env:
                 - name: TPU_WORKER_HOSTNAMES
                   value: "tf-mnist-v6e-16chip-master-0,tf-mnist-v6e-16chip-worker-0,tf-mnist-v6e-16chip-worker-1,tf-mnist-v6e-16chip-worker-2"
+                # **FIX**: Adding TPU_LOAD_LIBRARY back in, as you correctly pointed out.
+                - name: TPU_LOAD_LIBRARY
+                  value: "0"
+                # This flag forces the correct chip configuration for the driver.
+                - name: LIBTPU_INIT_ARGS
+                  value: "--2a886c8_chip_config_name=megachip_tccontrol"
+              securityContext:
+                privileged: true
               resources:
                 limits:
                   google.com/tpu: "4"
     Worker:
-      replicas: 3 # 1 Master + 3 Workers = 4 total nodes
+      replicas: 3
       restartPolicy: OnFailure
       template:
         spec:
           nodeSelector:
             cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
-            cloud.google.com/gke-tpu-topology: 2x4
+            cloud.google.com/gke-tpu-topology: 4x4
           tolerations:
             - key: "google.com/tpu"
               operator: "Exists"
@@ -47,10 +53,15 @@ spec:
             - name: tensorflow
               image: us-east5-docker.pkg.dev/chavoshi-gke-dev/tpu-repo/tf-tpu-unified:latest
               command: ["python", "main.py"]
-              # **FIX ADDED HERE**: This list must be identical for all pods.
               env:
                 - name: TPU_WORKER_HOSTNAMES
                   value: "tf-mnist-v6e-16chip-master-0,tf-mnist-v6e-16chip-worker-0,tf-mnist-v6e-16chip-worker-1,tf-mnist-v6e-16chip-worker-2"
+                - name: TPU_LOAD_LIBRARY
+                  value: "0"
+                - name: LIBTPU_INIT_ARGS
+                  value: "--2a886c8_chip_config_name=megachip_tccontrol"
+              securityContext:
+                privileged: true
               resources:
                 limits:
                   google.com/tpu: "4"
