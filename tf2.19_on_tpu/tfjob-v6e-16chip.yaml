@@ -1,3 +1,4 @@
+# tfjob-v6e-16chip.yaml
 apiVersion: kubeflow.org/v1
 kind: TFJob
 metadata:
@@ -13,7 +14,7 @@ spec:
         spec:
           nodeSelector:
             cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
-            cloud.google.com/gke-tpu-topology: 4x4
+            cloud.google.com/gke-tpu-topology: 2x4
           tolerations:
             - key: "google.com/tpu"
               operator: "Exists"
@@ -21,9 +22,12 @@ spec:
           containers:
             - name: tensorflow
               image: us-east5-docker.pkg.dev/chavoshi-gke-dev/tpu-repo/tf-tpu-unified:latest
-              command:
-                - "python"
-                - "main.py"
+              command: ["python", "main.py"]
+              # **FIX ADDED HERE**: Manually provide the list of all workers
+              # to the low-level TPU driver.
+              env:
+                - name: TPU_WORKER_HOSTNAMES
+                  value: "tf-mnist-v6e-16chip-master-0,tf-mnist-v6e-16chip-worker-0,tf-mnist-v6e-16chip-worker-1,tf-mnist-v6e-16chip-worker-2"
               resources:
                 limits:
                   google.com/tpu: "4"
@@ -34,7 +38,7 @@ spec:
         spec:
           nodeSelector:
             cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
-            cloud.google.com/gke-tpu-topology: 4x4
+            cloud.google.com/gke-tpu-topology: 2x4
           tolerations:
             - key: "google.com/tpu"
               operator: "Exists"
@@ -42,9 +46,11 @@ spec:
           containers:
             - name: tensorflow
               image: us-east5-docker.pkg.dev/chavoshi-gke-dev/tpu-repo/tf-tpu-unified:latest
-              command:
-                - "python"
-                - "main.py"
+              command: ["python", "main.py"]
+              # **FIX ADDED HERE**: This list must be identical for all pods.
+              env:
+                - name: TPU_WORKER_HOSTNAMES
+                  value: "tf-mnist-v6e-16chip-master-0,tf-mnist-v6e-16chip-worker-0,tf-mnist-v6e-16chip-worker-1,tf-mnist-v6e-16chip-worker-2"
               resources:
                 limits:
                   google.com/tpu: "4"

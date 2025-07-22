@@ -1,3 +1,4 @@
+# main.py
 import os
 import json
 import tensorflow as tf
@@ -28,24 +29,20 @@ def create_model():
     ])
 
 if __name__ == '__main__':
-    print("Starting TPU Controller...")
+    # TFJob automatically sets the TF_CONFIG environment variable.
+    tf_config = json.loads(os.environ.get('TF_CONFIG', '{}'))
+    task_type = tf_config.get('task', {}).get('type', '')
+    task_id = tf_config.get('task', {}).get('index', 0)
+    print(f"Starting TFJob replica. Role: {task_type}, ID: {task_id}")
+    print(f"Full TF_CONFIG: {os.environ.get('TF_CONFIG')}")
+
+    # This resolver reads the TF_CONFIG environment variable.
+    resolver = tf.distribute.cluster_resolver.TFConfigClusterResolver()
     
-    # --- TPU Initialization using the Controller-Worker Model ---
-    jobset_name = os.environ['JOBSET_NAME']
-    grpc_worker_name = os.environ['GRPC_WORKER_NAME']
-    num_replicas = int(os.environ['NUM_REPLICAS'])
-
-    # Build the gRPC endpoint string for the worker(s).
-    endpoints = [f"grpc://{jobset_name}-{grpc_worker_name}-{i}-0.{jobset_name}:8470" for i in range(num_replicas)]
-    tpu_address = ",".join(endpoints)
-    print(f"Connecting to TPU worker(s) at: {tpu_address}")
-
-    # Pass the explicit address to the resolver.
-    resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu=tpu_address)
+    # For TPUStrategy, the initialization steps remain the same.
     tf.config.experimental_connect_to_cluster(resolver)
     tf.tpu.experimental.initialize_tpu_system(resolver)
     strategy = tf.distribute.TPUStrategy(resolver)
-    # --- End of Initialization ---
 
     print(f"✅ TPU system initialized. Number of replicas: {strategy.num_replicas_in_sync}")
 
@@ -67,12 +64,18 @@ if __name__ == '__main__':
             steps_per_execution=50
         )
     
-    print("🚀 Starting model training...")
-    model.fit(
-        train_dataset,
-        epochs=EPOCHS,
-        steps_per_epoch=STEPS_PER_EPOCH,
-        validation_data=test_dataset,
-        validation_steps=VALIDATION_STEPS
-    )
-    print("🎉 Training complete.")
+    # Only the chief/master replica should run the training loop.
+    if task_type == 'master' or (task_type == 'worker' and task_id == 0):
+      print("🚀 This replica is the chief. Starting model training...")
+      model.fit(
+          train_dataset,
+          epochs=EPOCHS,
+          steps_per_epoch=STEPS_PER_EPOCH,
+          validation_data=test_dataset,
+          validation_steps=VALIDATION_STEPS
+      )
+      print("🎉 Training complete.")
+    else:
+      # Other workers just join the cluster and wait for instructions.
+      print("This is a worker replica. Joining cluster...")
+      resolver.cluster_spec().as_cluster_def() # This keeps the worker alive
