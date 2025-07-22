@@ -1,0 +1,88 @@
+# tf_debug_job.yaml
+# This JobSet implements the coordinator/worker architecture.
+apiVersion: jobset.x-k8s.io/v1alpha2
+kind: JobSet
+metadata:
+  name: tf-debug-job-v4-8chip
+spec:
+  failurePolicy:
+    maxRestarts: 0
+  successPolicy:
+    operator: "All"
+    targetReplicatedJobs:
+    - "tpu-controller"
+  replicatedJobs:
+    # ReplicatedJob 1: The gRPC workers that run on the TPU nodes.
+    - name: grpc-worker
+      template:
+        spec:
+          # For a v4-8 (2x2x2) slice, we have 2 pods.
+          parallelism: 2
+          completions: 2
+          backoffLimit: 3
+          template:
+            spec:
+              nodeSelector:
+                cloud.google.com/gke-tpu-accelerator: tpu-v4-podslice
+                cloud.google.com/gke-tpu-topology: 2x2x2
+              containers:
+              - name: tpu-worker
+                image: us-east5-docker.pkg.dev/chavoshi-gke-dev/tpu-repo/tf-debug-gke:latest
+                imagePullPolicy: "Always"
+                env:
+                - name: PYTHONUNBUFFERED
+                  value: "1"
+                # These flags are critical for enabling the TPU pluggable device architecture.
+                - name: NEXT_PLUGGABLE_DEVICE_USE_C_API
+                  value: "true"
+                - name: TF_PLUGGABLE_DEVICE_LIBRARY_PATH
+                  value: "/usr/local/lib/python3.10/site-packages/libtpu/libtpu.so"
+                ports:
+                - containerPort: 8470
+                securityContext:
+                  privileged: true
+                command:
+                - python3
+                - "start_worker.py"
+                resources:
+                  limits:
+                    google.com/tpu: 4
+    # ReplicatedJob 2: The single controller that runs on a CPU node.
+    - name: tpu-controller
+      template:
+        spec:
+          parallelism: 1
+          completions: 1
+          backoffLimit: 0
+          template:
+            spec:
+              # No nodeSelector, so it runs on a CPU node.
+              restartPolicy: Never
+              serviceAccountName: tpu-training-sa
+              containers:
+              - name: tpu-controller
+                image: us-east5-docker.pkg.dev/chavoshi-gke-dev/tpu-repo/tf-debug-gke:latest
+                imagePullPolicy: "Always"
+                env:
+                # The main script uses these to find the gRPC workers.
+                - name: GRPC_WORKER_NAME
+                  value: "grpc-worker"
+                - name: NUM_REPLICAS
+                  value: "2"
+                - name: JOBSET_NAME
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.annotations['jobset.sigs.k8s.io/jobset-name']
+                # The debug flags for Moloco's issue.
+                - name: TF_CPP_MIN_LOG_LEVEL
+                  value: "0"
+                - name: TPU_STDERR_LOG_LEVEL
+                  value: "0"
+                - name: TPU_MIN_LOG_LEVEL
+                  value: "0"
+                - name: TPU_VLOG_LEVEL
+                  value: "0"
+                command:
+                - python3
+                - "main.py"
+
