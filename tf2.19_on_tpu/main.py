@@ -1,117 +1,93 @@
-# main.py
-# This script runs on the single CPU coordinator pod.
-# It connects to the gRPC workers on the TPU pods to run the computation.
 import os
-import sys
-import json
-import ctypes
-
-# This MUST be the first thing we do.
-# It prevents TensorFlow from automatically loading libtpu.so and trying to
-# access the metadata server before we have a chance to configure it.
-os.environ['TPU_LOAD_LIBRARY'] = '0'
-
-print("\n--- TPU COORDINATOR SCRIPT START ---")
-
-# --- Step 1: Set ALL environment variables for libtpu.so initialization ---
-# These variables provide the physical topology information directly,
-# bypassing the need for the GCP metadata server.
-print("\n--- Setting Environment Variables for libtpu.so ---")
-jobset_name = os.environ.get('JOBSET_NAME')
-grpc_worker_name = os.environ.get('GRPC_WORKER_NAME')
-replicas_str = os.environ.get('NUM_REPLICAS')
-
-if not all([jobset_name, grpc_worker_name, replicas_str]):
-    print(f"JOBSET_NAME: {jobset_name}")
-    print(f"GRPC_WORKER_NAME: {grpc_worker_name}")
-    print(f"NUM_REPLICAS: {replicas_str}")
-    print("\n🛑 ERROR: Missing one or more required environment variables for the coordinator.")
-    sys.exit(1)
-
-replicas = int(replicas_str)
-
-# Construct the hostnames (without grpc:// or port)
-worker_hostnames_list = []
-for i in range(replicas):
-    hostname = f"{jobset_name}-{grpc_worker_name}-{i}-0.{jobset_name}"
-    worker_hostnames_list.append(hostname)
-worker_hostnames_string = ",".join(worker_hostnames_list)
-
-os.environ['TPU_WORKER_HOSTNAMES'] = worker_hostnames_string
-os.environ['TPU_ACCELERATOR_TYPE'] = 'tpu-v4-podslice'
-os.environ['TPU_WORKER_ID'] = '0' # The coordinator acts as the first logical worker for initialization.
-os.environ['HOST_BOUNDS'] = '2,2,2'
-os.environ['CHIPS_PER_HOST_BOUNDS'] = '2,2,1'
-
-print(f"TPU_WORKER_HOSTNAMES: {os.environ['TPU_WORKER_HOSTNAMES']}")
-print(f"TPU_ACCELERATOR_TYPE: {os.environ['TPU_ACCELERATOR_TYPE']}")
-print(f"TPU_WORKER_ID: {os.environ['TPU_WORKER_ID']}")
-print(f"HOST_BOUNDS: {os.environ['HOST_BOUNDS']}")
-print(f"CHIPS_PER_HOST_BOUNDS: {os.environ['CHIPS_PER_HOST_BOUNDS']}")
-
-
-# --- Step 2: Manually load the TPU library ---
-# This is the final critical step. We load the library ourselves now that the
-# environment is correctly configured.
-print("\n--- Attempting to explicitly load libtpu.so ---")
-libtpu_path = '/usr/local/lib/python3.10/site-packages/libtpu/libtpu.so'
-try:
-    ctypes.CDLL(libtpu_path)
-    print("✅ Successfully loaded libtpu.so.")
-except Exception as e:
-    print(f"🛑 CRITICAL ERROR: Could not load libtpu.so from path: {libtpu_path}")
-    print(f"    Error details: {e}")
-    sys.exit(1)
-
-
-# --- Step 3: Now import TensorFlow and build the gRPC endpoint list ---
 import tensorflow as tf
+import tensorflow_datasets as tfds
 
-worker_endpoints = []
-for hostname in worker_hostnames_list:
-    endpoint = f"grpc://{hostname}:8470"
-    worker_endpoints.append(endpoint)
-endpoint_string = ",".join(worker_endpoints)
-print(f"\nConstructed gRPC Endpoints for Resolver: {endpoint_string}")
+def print_tpu_environment_variables():
+    """Prints environment variables relevant for TPUClusterResolver."""
+    print("--- Verifying TPU Environment Variables ---")
+    
+    tpu_worker_hostnames = os.environ.get('TPU_WORKER_HOSTNAMES')
+    tpu_worker_id = os.environ.get('TPU_WORKER_ID')
+    tf_config = os.environ.get('TF_CONFIG')
+
+    print(f"TPU_WORKER_HOSTNAMES: {tpu_worker_hostnames}")
+    print(f"TPU_WORKER_ID: {tpu_worker_id}")
+    
+    if tf_config:
+        print(f"TF_CONFIG: {tf_config}")
+    else:
+        # This is the expected outcome for TPUStrategy on GKE.
+        print("TF_CONFIG: Not set (as expected for this setup).")
+    
+    print("------------------------------------------")
 
 
-# --- Step 4: Attempt TPU Initialization ---
-print("\n--- TPU Initialization Attempt ---")
-try:
-    tf.config.set_visible_devices([], 'GPU')
-    print("✅ Disabled local GPU devices.")
+def get_dataset(batch_size, is_training=True):
+    """Loads and prepares the MNIST dataset from a public GCS bucket."""
+    split = 'train' if is_training else 'test'
+    dataset, info = tfds.load(name='mnist', split=split, with_info=True,
+                              as_supervised=True, try_gcs=True)
 
-    resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu=endpoint_string)
+    def scale(image, label):
+        image = tf.cast(image, tf.float32)
+        image /= 255.0
+        return image, label
 
-    print("✅ Connecting to cluster...")
+    dataset = dataset.map(scale)
+
+    if is_training:
+        dataset = dataset.shuffle(10000)
+        dataset = dataset.repeat()
+
+    dataset = dataset.batch(batch_size, drop_remainder=True)
+    return dataset
+
+def create_model():
+    """Creates a simple CNN model."""
+    return tf.keras.Sequential([
+        tf.keras.layers.Conv2D(32, 3, activation='relu', input_shape=(28, 28, 1)),
+        tf.keras.layers.Flatten(),
+        tf.keras.layers.Dense(128, activation='relu'),
+        tf.keras.layers.Dense(10)
+    ])
+
+if __name__ == '__main__':
+    # Print the environment variables for verification.
+    print_tpu_environment_variables()
+    
+    print("Initializing TPU environment...")
+    resolver = tf.distribute.cluster_resolver.TPUClusterResolver.from_environ()
     tf.config.experimental_connect_to_cluster(resolver)
-
-    print("✅ Initializing TPU system...")
     tf.tpu.experimental.initialize_tpu_system(resolver)
-    print("✅ TPU system initialization SUCCEEDED!")
-
-    all_devices = tf.config.list_logical_devices('TPU')
-    print(f"\nAll available devices ({len(all_devices)}): {all_devices}")
-
-    # --- Step 5: Run the actual debug test ---
-    print("\n--- Manual Device Placement Test ---")
     strategy = tf.distribute.TPUStrategy(resolver)
+
+    print(f"✅ TPU system initialized. Number of replicas: {strategy.num_replicas_in_sync}")
+
+    PER_REPLICA_BATCH_SIZE = 128
+    GLOBAL_BATCH_SIZE = PER_REPLICA_BATCH_SIZE * strategy.num_replicas_in_sync
+    EPOCHS = 5
+    STEPS_PER_EPOCH = 60000 // GLOBAL_BATCH_SIZE
+    VALIDATION_STEPS = 10000 // GLOBAL_BATCH_SIZE
+
+    train_dataset = get_dataset(GLOBAL_BATCH_SIZE, is_training=True)
+    test_dataset = get_dataset(GLOBAL_BATCH_SIZE, is_training=False)
+
     with strategy.scope():
-        a = tf.constant([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
-        b = tf.constant([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
-        c = tf.matmul(a, b)
+        model = create_model()
+        model.compile(
+            optimizer='adam',
+            loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+            metrics=['sparse_categorical_accuracy'],
+            steps_per_execution=50 
+        )
+    
+    print("🚀 Starting model training...")
+    model.fit(
+        train_dataset,
+        epochs=EPOCHS,
+        steps_per_epoch=STEPS_PER_EPOCH,
+        validation_data=test_dataset,
+        validation_steps=VALIDATION_STEPS
+    )
 
-    print("\n--- Output ---")
-    print(f"Device of resulting tensor 'c': {c.device}")
-    print(f"Value of 'c':\n {c.numpy()}")
-    print("\n✅ Script completed successfully. Debug flags should be visible in the logs.")
-    sys.exit(0)
-
-except Exception as e:
-    print(f"\n🛑 An error occurred during TPU initialization: {e}")
-    import traceback
-    traceback.print_exc()
-    sys.exit(1)
-
-print("\n--- TPU COORDINATOR SCRIPT END ---")
-
+    print("🎉 Training complete.")
