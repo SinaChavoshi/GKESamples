@@ -1,7 +1,7 @@
 apiVersion: kubeflow.org/v1
 kind: TFJob
 metadata:
-  name: tf-16-kevinmcw-tfjob
+  name: tf-16-dlrm-tfjob
 spec:
   runPolicy:
     cleanPodPolicy: Running
@@ -204,7 +204,7 @@ spec:
                         results = model.evaluate(dist_test_ds, steps=steps)
                         print(f'Rest evaluation results (loss, RMSE): {results}')
                   "
-              image: us-west1-docker.pkg.dev/tpu-vm-gke-testing/kevinmcw-repo/dlrm:master219
+              image: us-east5-docker.pkg.dev/chavoshi-gke-dev/tpu-repo/dlrm-master:latest
               imagePullPolicy: Always
               env:
                 - name: TF_JOB_PACKAGE_URIS
@@ -223,7 +223,7 @@ spec:
             app: tfjob
         spec:
           nodeSelector:
-            cloud.google.com/gke-nodepool: pool-3
+            cloud.google.com/gke-nodepool: v6e-16
             cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
             cloud.google.com/gke-tpu-topology: 4x4
           tolerations:
@@ -251,7 +251,7 @@ spec:
                   valueFrom:
                     fieldRef:
                       fieldPath: metadata.labels['training.kubeflow.org/replica-index']
-              image: us-west1-docker.pkg.dev/tpu-vm-gke-testing/kevinmcw-repo/dlrm:worker219
+              image: us-east5-docker.pkg.dev/chavoshi-gke-dev/tpu-repo/dlrm-worker:latest
               imagePullPolicy: Always
               resources:
                 limits:
