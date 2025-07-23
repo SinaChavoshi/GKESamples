@@ -1,63 +1,23 @@
 #!/bin/bash
-set -e
-set -x
-
-# --- Dynamically Build TF_CONFIG and find the Master Worker ---
-
-IFS=',' read -r -a WORKERS <<< "$TPU_WORKER_HOSTNAMES"
-MASTER_ADDR="grpc://${WORKERS[0]}:8470"
-echo "Master TPU Worker Address: ${MASTER_ADDR}"
-
-JSON_WORKER_LIST=""
-for i in "${!WORKERS[@]}"; do
-    if [ $i -gt 0 ]; then
-        JSON_WORKER_LIST+=','
-    fi
-    JSON_WORKER_LIST+="\"${WORKERS[$i]}:8470\""
-done
-
-TASK_INDEX=$JOB_COMPLETION_INDEX
-
-export TF_CONFIG=$(cat <<EOF
-{
-  "cluster": {
-    "worker": [${JSON_WORKER_LIST}]
-  },
-  "task": {
-    "type": "worker",
-    "index": ${TASK_INDEX}
-  }
-}
-EOF
-)
-echo "Constructed TF_CONFIG for this pod:"
-echo "${TF_CONFIG}"
-
-# --- Original Script Execution ---
-
+export PYTHONPATH=/recommenders/:/models/
 export TF_XLA_FLAGS='--tf_mlir_enable_mlir_bridge=true --tf_xla_sparse_core_disable_table_stacking=true --tf_mlir_enable_convert_control_to_data_outputs_pass=true --tf_mlir_enable_merge_control_flow_pass=true'
-MODEL_DIR="gs://${BUCKET_NAME}/tf-dlrm-output/$(date +%s)"
-echo "Using model directory: $MODEL_DIR"
 
-# Set TPU_LOAD_LIBRARY=1 to force TensorFlow to load the libtpu.so driver.
-TF_USE_LEGACY_KERAS=1 TPU_LOAD_LIBRARY=1 python3 ./models/official/recommendation/ranking/train.py \
-    --mode=train \
-    --model_dir=${MODEL_DIR} \
-    --params_override="
+TF_USE_LEGACY_KERAS=1 TPU_LOAD_LIBRARY=0 python3 ./models/official/recommendation/ranking/train.py  --mode=train     --model_dir=/tmp --params_override="
 runtime:
   distribution_strategy: tpu
-  tpu: '${MASTER_ADDR}'
   mixed_precision_dtype: 'mixed_bfloat16'
+  tpu: 'grpc://tf-16-jeyeon-tfjob-worker-0.default.svc,grpc://tf-16-jeyeon-tfjob-worker-1.default.svc,grpc://tf-16-jeyeon-tfjob-worker-2.default.svc,grpc://tf-16-jeyeon-tfjob-worker-3.default.svc' # need to pass in grpc endpoints here in GKE
 task:
   use_synthetic_data: false
   use_tf_record_reader: true
   train_data:
-    input_path: 'gs://criteo-tpu-us-east5/criteo_preprocessed_shuffled_unbatched/train/*'
-    global_batch_size: 32768
+    input_path: 'gs://trillium-datasets/criteo/train/day_*/*'
+    global_batch_size: 16384
     use_cached_data: true
   validation_data:
-    input_path: 'gs://criteo-tpu-us-east5/criteo_preprocessed_shuffled_unbatched/eval/*'
-    global_batch_size: 32768
+    input_path: 'gs://trillium-datasets/criteo/eval/day_*/*'
+    global_batch_size: 16384
+    use_cached_data: true
   model:
     num_dense_features: 13
     bottom_mlp: [512, 256, 128]
@@ -74,16 +34,17 @@ task:
     multi_hot_sizes: [3,2,1,2,6,1,1,1,1,7,3,8,1,6,9,5,1,1,1,12,100,27,10,3,1,1]
     max_ids_per_chip_per_sample: 128
     max_ids_per_table: 4096
-    max_unique_ids_per_table: 1024
+    max_unique_ids_per_table: 2048
     use_partial_tpu_embedding: false
     size_threshold: 0
+    initialize_tables_on_host: true
 trainer:
-  train_steps: 10000
+  train_steps: 100000
   validation_interval: 1000
   validation_steps: 660
   summary_interval: 1000
   steps_per_loop: 1000
-  checkpoint_interval: 1000
+  checkpoint_interval: 0
   optimizer_config:
     embedding_optimizer: 'Adagrad'
     dense_optimizer: 'Adagrad'

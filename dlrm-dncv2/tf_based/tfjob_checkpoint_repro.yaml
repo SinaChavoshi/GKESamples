@@ -17,14 +17,6 @@ spec:
           labels:
             app: tfjob
         spec:
-          # nodeSelector:
-          #   cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
-          #   cloud.google.com/gke-tpu-topology: 2x4
-           ## tolerations:
-          #   - effect: NoSchedule
-          #     key: google.com/tpu
-          #     operator: Equal
-          #     value: present
           containers:
             - name: tensorflow
               command:
@@ -221,7 +213,6 @@ spec:
                 limits: {}
                 requests: {}
     Worker:
-      # replicas: 2
       replicas: 4
       restartPolicy: ExitCode
       template:
@@ -231,9 +222,6 @@ spec:
           labels:
             app: tfjob
         spec:
-          # serviceAccountName: training-worker
-          # priorityClassName: development
-          # schedulerName: my-custom-scheduler
           nodeSelector:
             cloud.google.com/gke-nodepool: pool-3
             cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
@@ -259,7 +247,6 @@ spec:
                   value: "1"
                 - name: TPU_WORKER_HOSTNAMES
                   value: tf-16-kevinmcw-tfjob-worker-0.default.svc,tf-16-kevinmcw-tfjob-worker-1.default.svc,tf-16-kevinmcw-tfjob-worker-2.default.svc,tf-16-kevinmcw-tfjob-worker-3.default.svc
-                  # value: tf-16-kevinmcw-tfjob-worker-0.default.svc,tf-16-kevinmcw-tfjob-worker-1.default.svc
                 - name: HOSTNAME
                   valueFrom:
                     fieldRef:
