@@ -14,6 +14,7 @@
 
 """Train and evaluate the Ranking model."""
 
+import time  # Import the time module to measure duration
 from typing import Dict
 
 from absl import app
@@ -55,6 +56,35 @@ class RankingTrainer(base_trainer.Trainer):
       else:
         logs[lr_key] = optimizer.learning_rate
     return logs
+
+
+# --- New class to add timing to the Orbit training path ---
+class TimedRankingTrainer(RankingTrainer):
+  """A RankingTrainer that measures checkpoint loading time when using Orbit."""
+
+  def initialize(self):
+    """Overrides the base trainer's initialize method to add timing."""
+    # Check for a checkpoint *before* calling the parent initializer,
+    # which is where the restoration actually happens.
+    latest_checkpoint = tf.train.latest_checkpoint(self.model_dir)
+
+    if latest_checkpoint:
+        logging.info('Starting to load checkpoint from gcs/gcsfuse (Orbit path): %s',
+                     latest_checkpoint)
+        start_time = time.time()
+
+        # Call the parent's initialize method to perform the actual restoration.
+        super().initialize()
+
+        duration = time.time() - start_time
+        logging.info('✅ Checkpoint loaded successfully.')
+        logging.info(
+            '⏰ Time to load checkpoint from gcs/gcsfuse (Orbit path): %.4f seconds',
+            duration)
+    else:
+        logging.info('No checkpoint found, initializing from scratch (Orbit path).')
+        # Still need to call the parent initializer to set up the model and manager.
+        super().initialize()
 
 
 def main(_) -> None:
@@ -108,7 +138,7 @@ def main(_) -> None:
     with strategy.scope():
       checkpoint_exporter = train_utils.maybe_create_best_ckpt_exporter(
           params, model_dir)
-      trainer = RankingTrainer(
+      trainer = TimedRankingTrainer(
           config=params,
           task=task,
           model=model,
@@ -132,8 +162,19 @@ def main(_) -> None:
 
     latest_checkpoint = tf.train.latest_checkpoint(model_dir)
     if latest_checkpoint:
+      # --- Start of existing timing logic ---
+      logging.info('Starting to load checkpoint from GCS: %s', latest_checkpoint)
+      start_time = time.time()
       checkpoint.restore(latest_checkpoint)
       logging.info('Loaded checkpoint %s', latest_checkpoint)
+      duration = time.time() - start_time
+      logging.info(
+          '⏰ Time to load checkpoint from GCS (Compile/Fit path): %.4f seconds',
+          duration)
+      # --- End of existing timing logic ---
+    else:
+      logging.info('No checkpoint found to restore, initializing from scratch.')
+
 
     checkpoint_manager = tf.train.CheckpointManager(
         checkpoint,

@@ -1,7 +1,7 @@
 apiVersion: kubeflow.org/v1
 kind: TFJob
 metadata:
-  name: tf-16-dlrm-tfjob
+  name: tf-16-dlrm-tfjob-gcsfuse
 spec:
   runPolicy:
     cleanPodPolicy: Running
@@ -13,24 +13,39 @@ spec:
       template:
         metadata:
           annotations:
+            # This annotation enables the GCS FUSE CSI driver for this pod.
+            gke-gcsfuse/volumes: "true"
             sidecar.istio.io/inject: "false"
           labels:
             app: tfjob
         spec:
+          # Define the GCS FUSE volume that will mount the bucket.
+          volumes:
+            - name: gcs-fuse-volume
+              csi:
+                driver: gcsfuse.csi.storage.gke.io
+                volumeAttributes:
+                  bucketName: chavoshi-checkpoints
+                  mountOptions: "implicit-dirs,file-cache:max-size-mb:-1,file-cache:enable-parallel-downloads:true,read_ahead_kb=1024,metadata-cache:ttl-secs:-1"
           containers:
             - name: tensorflow
+              # Mount the GCS volume to the /gcs path inside the container.
+              volumeMounts:
+                - name: gcs-fuse-volume
+                  mountPath: /gcs
               command:
                 - bash
                 - -c
                 - |
+                  # The command is updated to use the local /gcs mount path.
                   TF_USE_LEGACY_KERAS=1 TPU_LOAD_LIBRARY=0 TF_XLA_FLAGS="--tf_mlir_enable_mlir_bridge=true \
                   --tf_xla_sparse_core_disable_table_stacking=true \
                   --tf_mlir_enable_convert_control_to_data_outputs_pass=true \
-                  --tf_mlir_enable_merge_control_flow_pass=true" python3 /models/official/recommendation/ranking/train.py  --mode=train     --model_dir="gs://chavoshi-checkpoints" --params_override="
+                  --tf_mlir_enable_merge_control_flow_pass=true" python3 /models/official/recommendation/ranking/train.py  --mode=train     --model_dir="/gcs" --params_override="
                   runtime:
                     distribution_strategy: tpu
                     mixed_precision_dtype: 'mixed_bfloat16'
-                    tpu: 'grpc://tf-16-dlrm-tfjob-worker-0.default.svc,grpc://tf-16-dlrm-tfjob-worker-1.default.svc,grpc://tf-16-dlrm-tfjob-worker-2.default.svc,grpc://tf-16-dlrm-tfjob-worker-3.default.svc' # This will be adapted by the TFJob name
+                    tpu: 'grpc://tf-16-dlrm-tfjob-gcsfuse-worker-0.default.svc,grpc://tf-16-dlrm-tfjob-gcsfuse-worker-1.default.svc,grpc://tf-16-dlrm-tfjob-gcsfuse-worker-2.default.svc,grpc://tf-16-dlrm-tfjob-gcsfuse-worker-3.default.svc'
                   task:
                     use_synthetic_data: false
                     use_tf_record_reader: true
@@ -103,10 +118,20 @@ spec:
       template:
         metadata:
           annotations:
+            # This annotation enables the GCS FUSE CSI driver for this pod.
+            gke-gcsfuse/volumes: "true"
             sidecar.istio.io/inject: "false"
           labels:
             app: tfjob
         spec:
+          # Define the GCS FUSE volume that will mount the bucket.
+          volumes:
+            - name: gcs-fuse-volume
+              csi:
+                driver: gcsfuse.csi.storage.gke.io
+                volumeAttributes:
+                  bucketName: chavoshi-checkpoints
+                  mountOptions: "implicit-dirs"
           nodeSelector:
             cloud.google.com/gke-nodepool: v6e-16
             cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
@@ -122,6 +147,10 @@ spec:
               value: present
           containers:
             - name: tensorflow
+              # Mount the GCS volume to the /gcs path inside the container.
+              volumeMounts:
+                - name: gcs-fuse-volume
+                  mountPath: /gcs
               command:
                 - bash
                 - -c
@@ -131,7 +160,7 @@ spec:
                 - name: PYTHONUNBUFFERED
                   value: "1"
                 - name: TPU_WORKER_HOSTNAMES
-                  value: "tf-16-dlrm-tfjob-worker-0.default.svc,tf-16-dlrm-tfjob-worker-1.default.svc,tf-16-dlrm-tfjob-worker-2.default.svc,tf-16-dlrm-tfjob-worker-3.default.svc"
+                  value: "tf-16-dlrm-tfjob-gcsfuse-worker-0.default.svc,tf-16-dlrm-tfjob-gcsfuse-worker-1.default.svc,tf-16-dlrm-tfjob-gcsfuse-worker-2.default.svc,tf-16-dlrm-tfjob-gcsfuse-worker-3.default.svc"
                 - name: HOSTNAME
                   valueFrom:
                     fieldRef:

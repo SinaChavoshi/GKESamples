@@ -22,6 +22,8 @@ ENV PYTHONPATH "${PYTHONPATH}:/recommenders"
 RUN git clone https://github.com/ACW101/models.git /models
 ENV PYTHONPATH "${PYTHONPATH}:/models"
 
+COPY train.py /models/official/recommendation/ranking/train.py
+
 # Add entrypoint.sh
 ADD entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
