@@ -7,7 +7,7 @@ export CLUSTER_NAME="chavoshi-test"
 export AR_REGION="us-central2"
 export AR_REPO_NAME="tpu-repo"
 export IMAGE_TAG="latest"
-
+export BUCKET="chavoshi-checkpoints"
 export MASTER_IMAGE_NAME="dlrm-master"
 export WORKER_IMAGE_NAME="dlrm-worker"
 export YAML_FILE="tfjob_checkpoint_repro.yaml"
