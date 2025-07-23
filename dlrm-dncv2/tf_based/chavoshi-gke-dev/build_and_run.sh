@@ -2,10 +2,10 @@
 set -e
 
 ## ------------------- Configuration ------------------- ##
-export PROJECT_ID="chavoshi-gke-dev"
-export REGION="us-east5"
-export ZONE="us-east5-a"
-export CLUSTER_NAME="tpu-cluster"
+export PROJECT_ID="tpu-vm-gke-testing"
+export CLUSTER_REGION="us-central2"
+export CLUSTER_NAME="chavoshi-test"
+export AR_REGION="us-central2"
 export AR_REPO_NAME="tpu-repo"
 export IMAGE_TAG="latest"
 
@@ -21,19 +21,20 @@ NC='\033[0m' # No Color
 
 ## ----------- Authenticate & Configure ----------- ##
 echo -e "${ORANGE}🔌 Connecting to GKE cluster: ${CLUSTER_NAME}...${NC}"
-gcloud container clusters get-credentials ${CLUSTER_NAME} --zone ${ZONE} --project ${PROJECT_ID}
-echo -e "${ORANGE}🔐 Configuring Docker...${NC}"
-gcloud auth configure-docker "${REGION}-docker.pkg.dev"
+gcloud container clusters get-credentials ${CLUSTER_NAME} --region ${CLUSTER_REGION} --project ${PROJECT_ID}
+
+echo -e "${ORANGE}🔐 Configuring Docker for region ${AR_REGION}...${NC}"
+gcloud auth configure-docker "${AR_REGION}-docker.pkg.dev"
 
 ## ----------- Docker Build & Push ----------- ##
 echo -e "${ORANGE}🚀 Building Master image...${NC}"
-MASTER_IMAGE_URL="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO_NAME}/${MASTER_IMAGE_NAME}:${IMAGE_TAG}"
+MASTER_IMAGE_URL="${AR_REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO_NAME}/${MASTER_IMAGE_NAME}:${IMAGE_TAG}"
 docker build -f master.Dockerfile -t ${MASTER_IMAGE_URL} .
 docker push ${MASTER_IMAGE_URL}
 echo -e "${GREEN}✅ Master image pushed.${NC}"
 
 echo -e "${ORANGE}🚀 Building Worker image...${NC}"
-WORKER_IMAGE_URL="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO_NAME}/${WORKER_IMAGE_NAME}:${IMAGE_TAG}"
+WORKER_IMAGE_URL="${AR_REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO_NAME}/${WORKER_IMAGE_NAME}:${IMAGE_TAG}"
 docker build -f worker.Dockerfile -t ${WORKER_IMAGE_URL} .
 docker push ${WORKER_IMAGE_URL}
 echo -e "${GREEN}✅ Worker image pushed.${NC}"

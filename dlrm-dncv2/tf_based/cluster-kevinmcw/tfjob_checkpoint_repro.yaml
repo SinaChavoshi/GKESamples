@@ -1,7 +1,7 @@
 apiVersion: kubeflow.org/v1
 kind: TFJob
 metadata:
-  name: tf-16-dlrm-tfjob
+  name: tf-16-kevinmcw-tfjob
 spec:
   runPolicy:
     cleanPodPolicy: Running
@@ -17,6 +17,14 @@ spec:
           labels:
             app: tfjob
         spec:
+          # nodeSelector:
+          #   cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
+          #   cloud.google.com/gke-tpu-topology: 2x4
+           ## tolerations:
+          #   - effect: NoSchedule
+          #     key: google.com/tpu
+          #     operator: Equal
+          #     value: present
           containers:
             - name: tensorflow
               command:
@@ -204,7 +212,7 @@ spec:
                         results = model.evaluate(dist_test_ds, steps=steps)
                         print(f'Rest evaluation results (loss, RMSE): {results}')
                   "
-              image: us-east5-docker.pkg.dev/chavoshi-gke-dev/tpu-repo/dlrm-master:latest
+              image: us-west1-docker.pkg.dev/tpu-vm-gke-testing/kevinmcw-repo/dlrm:master219
               imagePullPolicy: Always
               env:
                 - name: TF_JOB_PACKAGE_URIS
@@ -213,6 +221,7 @@ spec:
                 limits: {}
                 requests: {}
     Worker:
+      # replicas: 2
       replicas: 4
       restartPolicy: ExitCode
       template:
@@ -222,8 +231,11 @@ spec:
           labels:
             app: tfjob
         spec:
+          # serviceAccountName: training-worker
+          # priorityClassName: development
+          # schedulerName: my-custom-scheduler
           nodeSelector:
-            cloud.google.com/gke-nodepool: v6e-16
+            cloud.google.com/gke-nodepool: pool-3
             cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
             cloud.google.com/gke-tpu-topology: 4x4
           tolerations:
@@ -247,11 +259,12 @@ spec:
                   value: "1"
                 - name: TPU_WORKER_HOSTNAMES
                   value: tf-16-kevinmcw-tfjob-worker-0.default.svc,tf-16-kevinmcw-tfjob-worker-1.default.svc,tf-16-kevinmcw-tfjob-worker-2.default.svc,tf-16-kevinmcw-tfjob-worker-3.default.svc
+                  # value: tf-16-kevinmcw-tfjob-worker-0.default.svc,tf-16-kevinmcw-tfjob-worker-1.default.svc
                 - name: HOSTNAME
                   valueFrom:
                     fieldRef:
                       fieldPath: metadata.labels['training.kubeflow.org/replica-index']
-              image: us-east5-docker.pkg.dev/chavoshi-gke-dev/tpu-repo/dlrm-worker:latest
+              image: us-west1-docker.pkg.dev/tpu-vm-gke-testing/kevinmcw-repo/dlrm:worker219
               imagePullPolicy: Always
               resources:
                 limits:
