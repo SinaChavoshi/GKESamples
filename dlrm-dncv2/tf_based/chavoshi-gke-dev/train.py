@@ -60,22 +60,17 @@ class RankingTrainer(base_trainer.Trainer):
 
 # --- New class to add timing to the Orbit training path ---
 class TimedRankingTrainer(RankingTrainer):
-  """A RankingTrainer that measures checkpoint loading time when using Orbit."""
+  """A RankingTrainer that measures checkpoint loading and saving time."""
 
   def initialize(self):
     """Overrides the base trainer's initialize method to add timing."""
-    # Check for a checkpoint *before* calling the parent initializer,
-    # which is where the restoration actually happens.
     latest_checkpoint = tf.train.latest_checkpoint(self.model_dir)
 
     if latest_checkpoint:
         logging.info('Starting to load checkpoint from gcs/gcsfuse (Orbit path): %s',
                      latest_checkpoint)
         start_time = time.time()
-
-        # Call the parent's initialize method to perform the actual restoration.
-        super().initialize()
-
+        super().initialize() # Perform the actual restoration.
         duration = time.time() - start_time
         logging.info('✅ Checkpoint loaded successfully.')
         logging.info(
@@ -83,8 +78,46 @@ class TimedRankingTrainer(RankingTrainer):
             duration)
     else:
         logging.info('No checkpoint found, initializing from scratch (Orbit path).')
-        # Still need to call the parent initializer to set up the model and manager.
         super().initialize()
+
+  def save_checkpoint(self):
+    """Overrides the base trainer's save_checkpoint method to add timing."""
+    logging.info('Starting to save checkpoint (Orbit path)...')
+    start_time = time.time()
+    super().save_checkpoint() # Perform the actual save.
+    duration = time.time() - start_time
+    logging.info(
+        '⏰ Time to save checkpoint (Orbit path): %.4f seconds', duration)
+
+
+# --- New class to add step-based checkpoint save timing to the compile/fit path ---
+class TimedStepCheckpoint(tf_keras.callbacks.Callback):
+  """A Keras Callback that saves checkpoints at step intervals and logs the time."""
+
+  def __init__(self, checkpoint_manager: tf.train.CheckpointManager):
+    """Initializes the callback.
+
+    Args:
+      checkpoint_manager: A `tf.train.CheckpointManager` instance.
+    """
+    super().__init__()
+    self._checkpoint_manager = checkpoint_manager
+
+  def on_train_batch_end(self, batch, logs=None):
+    """Overrides on_train_batch_end to save a checkpoint at the correct step."""
+    # Get the current step from the checkpoint manager's tracked step counter.
+    step = self._checkpoint_manager.step_counter.numpy()
+    interval = self._checkpoint_manager.checkpoint_interval
+    # Check if a checkpoint should be saved at this step.
+    if interval and step > 0 and step % interval == 0:
+      logging.info('Starting to save checkpoint (Compile/Fit path) at step %d...',
+                   step)
+      start_time = time.time()
+      self._checkpoint_manager.save()
+      duration = time.time() - start_time
+      logging.info(
+          '⏰ Time to save checkpoint (Compile/Fit path): %.4f seconds',
+          duration)
 
 
 def main(_) -> None:
@@ -93,8 +126,6 @@ def main(_) -> None:
   mode = FLAGS.mode
   model_dir = FLAGS.model_dir
   if 'train' in FLAGS.mode:
-    # Pure eval modes do not output yaml files. Otherwise continuous eval job
-    # may race against the train job for writing the same file.
     train_utils.serialize_config(params, model_dir)
 
   if FLAGS.seed is not None:
@@ -162,7 +193,6 @@ def main(_) -> None:
 
     latest_checkpoint = tf.train.latest_checkpoint(model_dir)
     if latest_checkpoint:
-      # --- Start of existing timing logic ---
       logging.info('Starting to load checkpoint from GCS: %s', latest_checkpoint)
       start_time = time.time()
       checkpoint.restore(latest_checkpoint)
@@ -171,7 +201,6 @@ def main(_) -> None:
       logging.info(
           '⏰ Time to load checkpoint from GCS (Compile/Fit path): %.4f seconds',
           duration)
-      # --- End of existing timing logic ---
     else:
       logging.info('No checkpoint found to restore, initializing from scratch.')
 
@@ -182,7 +211,8 @@ def main(_) -> None:
         max_to_keep=params.trainer.max_to_keep,
         step_counter=model.optimizer.iterations,
         checkpoint_interval=params.trainer.checkpoint_interval)
-    checkpoint_callback = keras_utils.SimpleCheckpoint(checkpoint_manager)
+
+    checkpoint_callback = TimedStepCheckpoint(checkpoint_manager)
 
     time_callback = keras_utils.TimeHistory(
         params.task.train_data.global_batch_size,
@@ -229,3 +259,4 @@ if __name__ == '__main__':
   logging.set_verbosity(logging.INFO)
   common.define_flags()
   app.run(main)
+

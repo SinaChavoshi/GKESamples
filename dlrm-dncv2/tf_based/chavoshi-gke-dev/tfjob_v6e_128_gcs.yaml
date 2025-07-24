@@ -1,7 +1,7 @@
 apiVersion: kubeflow.org/v1
 kind: TFJob
 metadata:
-  name: tf-16-dlrm-tfjob
+  name: tf-128-dlrm-tfjob-gcs
 spec:
   runPolicy:
     cleanPodPolicy: Running
@@ -30,7 +30,7 @@ spec:
                   runtime:
                     distribution_strategy: tpu
                     mixed_precision_dtype: 'mixed_bfloat16'
-                    tpu: 'grpc://tf-16-dlrm-tfjob-worker-0.default.svc,grpc://tf-16-dlrm-tfjob-worker-1.default.svc,grpc://tf-16-dlrm-tfjob-worker-2.default.svc,grpc://tf-16-dlrm-tfjob-worker-3.default.svc' # This will be adapted by the TFJob name
+                    tpu: 'grpc://tf-128-dlrm-tfjob-gcs-worker-0.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-1.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-2.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-3.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-4.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-5.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-6.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-7.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-8.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-9.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-10.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-11.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-12.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-13.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-14.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-15.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-16.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-17.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-18.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-19.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-20.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-21.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-22.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-23.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-24.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-25.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-26.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-27.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-28.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-29.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-30.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-31.default.svc'
                   task:
                     use_synthetic_data: false
                     use_tf_record_reader: true
@@ -131,7 +131,7 @@ spec:
                 - name: PYTHONUNBUFFERED
                   value: "1"
                 - name: TPU_WORKER_HOSTNAMES
-                  value: "tf-16-dlrm-tfjob-worker-0.default.svc,tf-16-dlrm-tfjob-worker-1.default.svc,tf-16-dlrm-tfjob-worker-2.default.svc,tf-16-dlrm-tfjob-worker-3.default.svc"
+                  value: "tf-128-dlrm-tfjob-gcs-worker-0.default.svc,tf-128-dlrm-tfjob-gcs-worker-1.default.svc,tf-128-dlrm-tfjob-gcs-worker-2.default.svc,tf-128-dlrm-tfjob-gcs-worker-3.default.svc,tf-128-dlrm-tfjob-gcs-worker-4.default.svc,tf-128-dlrm-tfjob-gcs-worker-5.default.svc,tf-128-dlrm-tfjob-gcs-worker-6.default.svc,tf-128-dlrm-tfjob-gcs-worker-7.default.svc,tf-128-dlrm-tfjob-gcs-worker-8.default.svc,tf-128-dlrm-tfjob-gcs-worker-9.default.svc,tf-128-dlrm-tfjob-gcs-worker-10.default.svc,tf-128-dlrm-tfjob-gcs-worker-11.default.svc,tf-128-dlrm-tfjob-gcs-worker-12.default.svc,tf-128-dlrm-tfjob-gcs-worker-13.default.svc,tf-128-dlrm-tfjob-gcs-worker-14.default.svc,tf-128-dlrm-tfjob-gcs-worker-15.default.svc,tf-128-dlrm-tfjob-gcs-worker-16.default.svc,tf-128-dlrm-tfjob-gcs-worker-17.default.svc,tf-128-dlrm-tfjob-gcs-worker-18.default.svc,tf-128-dlrm-tfjob-gcs-worker-19.default.svc,tf-128-dlrm-tfjob-gcs-worker-20.default.svc,tf-128-dlrm-tfjob-gcs-worker-21.default.svc,tf-128-dlrm-tfjob-gcs-worker-22.default.svc,tf-128-dlrm-tfjob-gcs-worker-23.default.svc,tf-128-dlrm-tfjob-gcs-worker-24.default.svc,tf-128-dlrm-tfjob-gcs-worker-25.default.svc,tf-128-dlrm-tfjob-gcs-worker-26.default.svc,tf-128-dlrm-tfjob-gcs-worker-27.default.svc,tf-128-dlrm-tfjob-gcs-worker-28.default.svc,tf-128-dlrm-tfjob-gcs-worker-29.default.svc,tf-128-dlrm-tfjob-gcs-worker-30.default.svc,tf-128-dlrm-tfjob-gcs-worker-31.default.svc"
                 - name: HOSTNAME
                   valueFrom:
                     fieldRef:

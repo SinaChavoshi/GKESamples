@@ -42,7 +42,7 @@ spec:
                   TF_USE_LEGACY_KERAS=1 TPU_LOAD_LIBRARY=0 TF_XLA_FLAGS="--tf_mlir_enable_mlir_bridge=true \
                   --tf_xla_sparse_core_disable_table_stacking=true \
                   --tf_mlir_enable_convert_control_to_data_outputs_pass=true \
-                  --tf_mlir_enable_merge_control_flow_pass=true" python3 /models/official/recommendation/ranking/train.py  --mode=train     --model_dir="/gcs/v6e_16/" --params_override="
+                  --tf_mlir_enable_merge_control_flow_pass=true" python3 /models/official/recommendation/ranking/train.py  --mode=train     --model_dir="/gcs/v6e_16_r2/" --params_override="
                   runtime:
                     distribution_strategy: tpu
                     mixed_precision_dtype: 'mixed_bfloat16'
@@ -55,13 +55,13 @@ spec:
                       global_batch_size: 16384
                       use_cached_data: true
                     validation_data:
-                      input_path: /gcs/tb_tf_record_train_val/tb_tf_record_train_val/eval/day_*/*'
+                      input_path: '/gcs/tb_tf_record_train_val/tb_tf_record_train_val/eval/day_*/*'
                       global_batch_size: 16384
                       use_cached_data: true
                     model:
                       num_dense_features: 13
                       bottom_mlp: [512, 256, 128]
-                      embedding_dim: 256
+                      embedding_dim: 128
                       interaction: 'multi_layer_dcn'
                       dcn_num_layers: 3
                       dcn_low_rank_dim: 512
@@ -119,13 +119,11 @@ spec:
       template:
         metadata:
           annotations:
-            # This annotation enables the GCS FUSE CSI driver for this pod.
             gke-gcsfuse/volumes: "true"
             sidecar.istio.io/inject: "false"
           labels:
             app: tfjob
         spec:
-          # Define the GCS FUSE volume that will mount the bucket.
           volumes:
             - name: gcs-fuse-volume
               csi:
@@ -148,7 +146,6 @@ spec:
               value: present
           containers:
             - name: tensorflow
-              # Mount the GCS volume to the /gcs path inside the container.
               volumeMounts:
                 - name: gcs-fuse-volume
                   mountPath: /gcs
