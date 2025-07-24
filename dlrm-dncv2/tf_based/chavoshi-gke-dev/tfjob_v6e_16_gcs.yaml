@@ -26,7 +26,7 @@ spec:
                   TF_USE_LEGACY_KERAS=1 TPU_LOAD_LIBRARY=0 TF_XLA_FLAGS="--tf_mlir_enable_mlir_bridge=true \
                   --tf_xla_sparse_core_disable_table_stacking=true \
                   --tf_mlir_enable_convert_control_to_data_outputs_pass=true \
-                  --tf_mlir_enable_merge_control_flow_pass=true" python3 /models/official/recommendation/ranking/train.py  --mode=train     --model_dir="gs://chavoshi-checkpoints" --params_override="
+                  --tf_mlir_enable_merge_control_flow_pass=true" python3 /models/official/recommendation/ranking/train.py  --mode=train     --model_dir="gs://chavoshi-checkpoints/v6e_16/" --params_override="
                   runtime:
                     distribution_strategy: tpu
                     mixed_precision_dtype: 'mixed_bfloat16'
@@ -35,17 +35,17 @@ spec:
                     use_synthetic_data: false
                     use_tf_record_reader: true
                     train_data:
-                      input_path: 'gs://zyc_dlrm/dataset/tb_tf_record_train_val/train/day_*/*'
+                      input_path: 'gs://chavoshi-checkpoints/tb_tf_record_train_val/tb_tf_record_train_val/train/day_*/*'
                       global_batch_size: 16384
                       use_cached_data: true
                     validation_data:
-                      input_path: 'gs://zyc_dlrm/dataset/tb_tf_record_train_val/train/day_*/*'
+                      input_path: 'gs://chavoshi-checkpoints/tb_tf_record_train_val/tb_tf_record_train_val/eval/day_*/*'
                       global_batch_size: 16384
                       use_cached_data: true
                     model:
                       num_dense_features: 13
                       bottom_mlp: [512, 256, 128]
-                      embedding_dim: 128
+                      embedding_dim: 256
                       interaction: 'multi_layer_dcn'
                       dcn_num_layers: 3
                       dcn_low_rank_dim: 512
@@ -63,7 +63,7 @@ spec:
                       size_threshold: 0
                       initialize_tables_on_host: true
                   trainer:
-                    train_steps: 5000
+                    train_steps: 10000
                     validation_interval: 1000
                     validation_steps: 660
                     summary_interval: 1000
