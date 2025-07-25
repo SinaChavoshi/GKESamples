@@ -1,7 +1,7 @@
 apiVersion: kubeflow.org/v1
 kind: TFJob
 metadata:
-  name: tf-16-dlrm-tfjob-gcsfuse
+  name: ${TFJOB_NAME}
 spec:
   runPolicy:
     cleanPodPolicy: Running
@@ -15,22 +15,19 @@ spec:
           labels:
             app: tfjob
           annotations:
-            # This annotation enables the GCS FUSE CSI driver for this pod.
             gke-gcsfuse/volumes: "true"
             sidecar.istio.io/inject: "false"
         spec:
-          # Define the GCS FUSE volume that will mount the bucket.
+          serviceAccountName: chavoshi-dlrm-job-sa
           volumes:
             - name: gcs-fuse-volume
               csi:
                 driver: gcsfuse.csi.storage.gke.io
                 volumeAttributes:
-                  bucketName: chavoshi-checkpoints
-                  # Specific optimization for Model training and Checkpoint saving.
+                  bucketName: ${GCS_BUCKET_NAME}
                   mountOptions: "implicit-dirs,file-cache:max-size-mb:-1,file-cache:enable-parallel-downloads:true,read_ahead_kb=1024,metadata-cache:ttl-secs:-1"
           containers:
             - name: tensorflow
-              # Mount the GCS volume to the /gcs path inside the container.
               volumeMounts:
                 - name: gcs-fuse-volume
                   mountPath: /gcs
@@ -38,7 +35,6 @@ spec:
                 - bash
                 - -c
                 - |
-                  # The command is updated to use the local /gcs mount path.
                   TF_USE_LEGACY_KERAS=1 TPU_LOAD_LIBRARY=0 TF_XLA_FLAGS="--tf_mlir_enable_mlir_bridge=true \
                   --tf_xla_sparse_core_disable_table_stacking=true \
                   --tf_mlir_enable_convert_control_to_data_outputs_pass=true \
@@ -46,7 +42,7 @@ spec:
                   runtime:
                     distribution_strategy: tpu
                     mixed_precision_dtype: 'mixed_bfloat16'
-                    tpu: 'grpc://tf-16-dlrm-tfjob-gcsfuse-worker-0.default.svc,grpc://tf-16-dlrm-tfjob-gcsfuse-worker-1.default.svc,grpc://tf-16-dlrm-tfjob-gcsfuse-worker-2.default.svc,grpc://tf-16-dlrm-tfjob-gcsfuse-worker-3.default.svc'
+                    tpu: 'grpc://${TFJOB_NAME}-worker-0.default.svc,grpc://${TFJOB_NAME}-worker-1.default.svc,grpc://${TFJOB_NAME}-worker-2.default.svc,grpc://${TFJOB_NAME}-worker-3.default.svc'
                   task:
                     use_synthetic_data: false
                     use_tf_record_reader: true
@@ -105,14 +101,20 @@ spec:
                     eval_tf_while_loop: true
                     use_orbit: false
                     pipeline_sparse_and_dense_execution: true"
-              image: us-central2-docker.pkg.dev/tpu-vm-gke-testing/tpu-repo/dlrm-master:latest
+              image: ${MASTER_IMAGE_URL}
               imagePullPolicy: Always
               env:
                 - name: TF_JOB_PACKAGE_URIS
                   value: ""
-              resources:
-                limits: {}
-                requests: {}
+                - name: TF_CPP_MIN_LOG_LEVEL
+                  value: "0"
+                - name: TPU_STDERR_LOG_LEVEL
+                  value: "0"
+                - name: TPU_MIN_LOG_LEVEL
+                  value: "0"
+                - name: TPU_VLOG_LEVEL
+                  value: "0"
+              resources: {}
     Worker:
       replicas: 4
       restartPolicy: ExitCode
@@ -124,15 +126,15 @@ spec:
           labels:
             app: tfjob
         spec:
+          serviceAccountName: chavoshi-dlrm-job-sa
           volumes:
             - name: gcs-fuse-volume
               csi:
                 driver: gcsfuse.csi.storage.gke.io
                 volumeAttributes:
-                  bucketName: chavoshi-checkpoints
+                  bucketName: ${GCS_BUCKET_NAME}
                   mountOptions: "implicit-dirs"
           nodeSelector:
-            cloud.google.com/gke-nodepool: v6e-16
             cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
             cloud.google.com/gke-tpu-topology: 4x4
           tolerations:
@@ -157,13 +159,21 @@ spec:
               env:
                 - name: PYTHONUNBUFFERED
                   value: "1"
+                - name: TF_CPP_MIN_LOG_LEVEL
+                  value: "0"
+                - name: TPU_STDERR_LOG_LEVEL
+                  value: "0"
+                - name: TPU_MIN_LOG_LEVEL
+                  value: "0"
+                - name: TPU_VLOG_LEVEL
+                  value: "0"
                 - name: TPU_WORKER_HOSTNAMES
-                  value: "tf-16-dlrm-tfjob-gcsfuse-worker-0.default.svc,tf-16-dlrm-tfjob-gcsfuse-worker-1.default.svc,tf-16-dlrm-tfjob-gcsfuse-worker-2.default.svc,tf-16-dlrm-tfjob-gcsfuse-worker-3.default.svc"
+                  value: "${TFJOB_NAME}-worker-0.default.svc,${TFJOB_NAME}-worker-1.default.svc,${TFJOB_NAME}-worker-2.default.svc,${TFJOB_NAME}-worker-3.default.svc"
                 - name: HOSTNAME
                   valueFrom:
                     fieldRef:
                       fieldPath: metadata.labels['training.kubeflow.org/replica-index']
-              image: us-central2-docker.pkg.dev/tpu-vm-gke-testing/tpu-repo/dlrm-worker:latest
+              image: ${WORKER_IMAGE_URL}
               imagePullPolicy: Always
               resources:
                 limits:

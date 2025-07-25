@@ -1,7 +1,7 @@
 apiVersion: kubeflow.org/v1
 kind: TFJob
 metadata:
-  name: tf-128-dlrm-tfjob-gcs
+  name: ${TFJOB_NAME}
 spec:
   runPolicy:
     cleanPodPolicy: Running
@@ -17,6 +17,7 @@ spec:
           labels:
             app: tfjob
         spec:
+          serviceAccountName: chavoshi-dlrm-job-sa
           containers:
             - name: tensorflow
               command:
@@ -26,20 +27,20 @@ spec:
                   TF_USE_LEGACY_KERAS=1 TPU_LOAD_LIBRARY=0 TF_XLA_FLAGS="--tf_mlir_enable_mlir_bridge=true \
                   --tf_xla_sparse_core_disable_table_stacking=true \
                   --tf_mlir_enable_convert_control_to_data_outputs_pass=true \
-                  --tf_mlir_enable_merge_control_flow_pass=true" python3 /models/official/recommendation/ranking/train.py  --mode=train     --model_dir="gs://chavoshi-checkpoints/v6e_128/" --params_override="
+                  --tf_mlir_enable_merge_control_flow_pass=true" python3 /models/official/recommendation/ranking/train.py  --mode=train     --model_dir="gs://${GCS_BUCKET_NAME}/v6e_128/" --params_override="
                   runtime:
                     distribution_strategy: tpu
                     mixed_precision_dtype: 'mixed_bfloat16'
-                    tpu: 'grpc://tf-128-dlrm-tfjob-gcs-worker-0.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-1.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-2.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-3.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-4.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-5.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-6.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-7.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-8.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-9.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-10.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-11.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-12.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-13.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-14.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-15.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-16.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-17.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-18.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-19.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-20.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-21.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-22.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-23.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-24.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-25.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-26.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-27.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-28.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-29.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-30.default.svc,grpc://tf-128-dlrm-tfjob-gcs-worker-31.default.svc'
+                    tpu: 'grpc://${TFJOB_NAME}-worker-0.default.svc,grpc://${TFJOB_NAME}-worker-1.default.svc,grpc://${TFJOB_NAME}-worker-2.default.svc,grpc://${TFJOB_NAME}-worker-3.default.svc,grpc://${TFJOB_NAME}-worker-4.default.svc,grpc://${TFJOB_NAME}-worker-5.default.svc,grpc://${TFJOB_NAME}-worker-6.default.svc,grpc://${TFJOB_NAME}-worker-7.default.svc,grpc://${TFJOB_NAME}-worker-8.default.svc,grpc://${TFJOB_NAME}-worker-9.default.svc,grpc://${TFJOB_NAME}-worker-10.default.svc,grpc://${TFJOB_NAME}-worker-11.default.svc,grpc://${TFJOB_NAME}-worker-12.default.svc,grpc://${TFJOB_NAME}-worker-13.default.svc,grpc://${TFJOB_NAME}-worker-14.default.svc,grpc://${TFJOB_NAME}-worker-15.default.svc,grpc://${TFJOB_NAME}-worker-16.default.svc,grpc://${TFJOB_NAME}-worker-17.default.svc,grpc://${TFJOB_NAME}-worker-18.default.svc,grpc://${TFJOB_NAME}-worker-19.default.svc,grpc://${TFJOB_NAME}-worker-20.default.svc,grpc://${TFJOB_NAME}-worker-21.default.svc,grpc://${TFJOB_NAME}-worker-22.default.svc,grpc://${TFJOB_NAME}-worker-23.default.svc,grpc://${TFJOB_NAME}-worker-24.default.svc,grpc://${TFJOB_NAME}-worker-25.default.svc,grpc://${TFJOB_NAME}-worker-26.default.svc,grpc://${TFJOB_NAME}-worker-27.default.svc,grpc://${TFJOB_NAME}-worker-28.default.svc,grpc://${TFJOB_NAME}-worker-29.default.svc,grpc://${TFJOB_NAME}-worker-30.default.svc,grpc://${TFJOB_NAME}-worker-31.default.svc'
                   task:
                     use_synthetic_data: false
                     use_tf_record_reader: true
                     train_data:
-                      input_path: 'gs://chavoshi-checkpoints/tb_tf_record_train_val/tb_tf_record_train_val/train/day_*/*'
+                      input_path: 'gs://${GCS_BUCKET_NAME}/tb_tf_record_train_val/tb_tf_record_train_val/train/day_*/*'
                       global_batch_size: 16384
                       use_cached_data: true
                     validation_data:
-                      input_path: 'gs://chavoshi-checkpoints/tb_tf_record_train_val/tb_tf_record_train_val/eval/day_*/*'
+                      input_path: 'gs://${GCS_BUCKET_NAME}/tb_tf_record_train_val/tb_tf_record_train_val/eval/day_*/*'
                       global_batch_size: 16384
                       use_cached_data: true
                     model:
@@ -89,14 +90,12 @@ spec:
                     eval_tf_while_loop: true
                     use_orbit: false
                     pipeline_sparse_and_dense_execution: true"
-              image: us-central2-docker.pkg.dev/tpu-vm-gke-testing/tpu-repo/dlrm-master:latest
+              image: ${MASTER_IMAGE_URL}
               imagePullPolicy: Always
               env:
                 - name: TF_JOB_PACKAGE_URIS
                   value: ""
-              resources:
-                limits: {}
-                requests: {}
+              resources: {}
     Worker:
       replicas: 32
       restartPolicy: ExitCode
@@ -107,8 +106,8 @@ spec:
           labels:
             app: tfjob
         spec:
+          serviceAccountName: chavoshi-dlrm-job-sa
           nodeSelector:
-            cloud.google.com/gke-nodepool: v6e-128
             cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
             cloud.google.com/gke-tpu-topology: 8x16
           tolerations:
@@ -131,12 +130,12 @@ spec:
                 - name: PYTHONUNBUFFERED
                   value: "1"
                 - name: TPU_WORKER_HOSTNAMES
-                  value: "tf-128-dlrm-tfjob-gcs-worker-0.default.svc,tf-128-dlrm-tfjob-gcs-worker-1.default.svc,tf-128-dlrm-tfjob-gcs-worker-2.default.svc,tf-128-dlrm-tfjob-gcs-worker-3.default.svc,tf-128-dlrm-tfjob-gcs-worker-4.default.svc,tf-128-dlrm-tfjob-gcs-worker-5.default.svc,tf-128-dlrm-tfjob-gcs-worker-6.default.svc,tf-128-dlrm-tfjob-gcs-worker-7.default.svc,tf-128-dlrm-tfjob-gcs-worker-8.default.svc,tf-128-dlrm-tfjob-gcs-worker-9.default.svc,tf-128-dlrm-tfjob-gcs-worker-10.default.svc,tf-128-dlrm-tfjob-gcs-worker-11.default.svc,tf-128-dlrm-tfjob-gcs-worker-12.default.svc,tf-128-dlrm-tfjob-gcs-worker-13.default.svc,tf-128-dlrm-tfjob-gcs-worker-14.default.svc,tf-128-dlrm-tfjob-gcs-worker-15.default.svc,tf-128-dlrm-tfjob-gcs-worker-16.default.svc,tf-128-dlrm-tfjob-gcs-worker-17.default.svc,tf-128-dlrm-tfjob-gcs-worker-18.default.svc,tf-128-dlrm-tfjob-gcs-worker-19.default.svc,tf-128-dlrm-tfjob-gcs-worker-20.default.svc,tf-128-dlrm-tfjob-gcs-worker-21.default.svc,tf-128-dlrm-tfjob-gcs-worker-22.default.svc,tf-128-dlrm-tfjob-gcs-worker-23.default.svc,tf-128-dlrm-tfjob-gcs-worker-24.default.svc,tf-128-dlrm-tfjob-gcs-worker-25.default.svc,tf-128-dlrm-tfjob-gcs-worker-26.default.svc,tf-128-dlrm-tfjob-gcs-worker-27.default.svc,tf-128-dlrm-tfjob-gcs-worker-28.default.svc,tf-128-dlrm-tfjob-gcs-worker-29.default.svc,tf-128-dlrm-tfjob-gcs-worker-30.default.svc,tf-128-dlrm-tfjob-gcs-worker-31.default.svc"
+                  value: "${TFJOB_NAME}-worker-0.default.svc,${TFJOB_NAME}-worker-1.default.svc,${TFJOB_NAME}-worker-2.default.svc,${TFJOB_NAME}-worker-3.default.svc,${TFJOB_NAME}-worker-4.default.svc,${TFJOB_NAME}-worker-5.default.svc,${TFJOB_NAME}-worker-6.default.svc,${TFJOB_NAME}-worker-7.default.svc,${TFJOB_NAME}-worker-8.default.svc,${TFJOB_NAME}-worker-9.default.svc,${TFJOB_NAME}-worker-10.default.svc,${TFJOB_NAME}-worker-11.default.svc,${TFJOB_NAME}-worker-12.default.svc,${TFJOB_NAME}-worker-13.default.svc,${TFJOB_NAME}-worker-14.default.svc,${TFJOB_NAME}-worker-15.default.svc,${TFJOB_NAME}-worker-16.default.svc,${TFJOB_NAME}-worker-17.default.svc,${TFJOB_NAME}-worker-18.default.svc,${TFJOB_NAME}-worker-19.default.svc,${TFJOB_NAME}-worker-20.default.svc,${TFJOB_NAME}-worker-21.default.svc,${TFJOB_NAME}-worker-22.default.svc,${TFJOB_NAME}-worker-23.default.svc,${TFJOB_NAME}-worker-24.default.svc,${TFJOB_NAME}-worker-25.default.svc,${TFJOB_NAME}-worker-26.default.svc,${TFJOB_NAME}-worker-27.default.svc,${TFJOB_NAME}-worker-28.default.svc,${TFJOB_NAME}-worker-29.default.svc,${TFJOB_NAME}-worker-30.default.svc,${TFJOB_NAME}-worker-31.default.svc"
                 - name: HOSTNAME
                   valueFrom:
                     fieldRef:
                       fieldPath: metadata.labels['training.kubeflow.org/replica-index']
-              image: us-central2-docker.pkg.dev/tpu-vm-gke-testing/tpu-repo/dlrm-worker:latest
+              image: ${WORKER_IMAGE_URL}
               imagePullPolicy: Always
               resources:
                 limits:

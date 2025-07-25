@@ -1,7 +1,7 @@
 apiVersion: kubeflow.org/v1
 kind: TFJob
 metadata:
-  name: tf-16-dlrm-tfjob-gcs
+  name: ${TFJOB_NAME}
 spec:
   runPolicy:
     cleanPodPolicy: Running
@@ -17,6 +17,7 @@ spec:
           labels:
             app: tfjob
         spec:
+          serviceAccountName: chavoshi-dlrm-job-sa
           containers:
             - name: tensorflow
               command:
@@ -26,20 +27,20 @@ spec:
                   TF_USE_LEGACY_KERAS=1 TPU_LOAD_LIBRARY=0 TF_XLA_FLAGS="--tf_mlir_enable_mlir_bridge=true \
                   --tf_xla_sparse_core_disable_table_stacking=true \
                   --tf_mlir_enable_convert_control_to_data_outputs_pass=true \
-                  --tf_mlir_enable_merge_control_flow_pass=true" python3 /models/official/recommendation/ranking/train.py  --mode=train     --model_dir="gs://chavoshi-checkpoints/v6e_16/" --params_override="
+                  --tf_mlir_enable_merge_control_flow_pass=true" python3 /models/official/recommendation/ranking/train.py  --mode=train     --model_dir="gs://${GCS_BUCKET_NAME}/v6e_16/" --params_override="
                   runtime:
                     distribution_strategy: tpu
                     mixed_precision_dtype: 'mixed_bfloat16'
-                    tpu: 'grpc://tf-16-dlrm-tfjob-gcs-worker-0.default.svc,grpc://tf-16-dlrm-tfjob-gcs-worker-1.default.svc,grpc://tf-16-dlrm-tfjob-gcs-worker-2.default.svc,grpc://tf-16-dlrm-tfjob-gcs-worker-3.default.svc'
+                    tpu: 'grpc://${TFJOB_NAME}-worker-0.default.svc,grpc://${TFJOB_NAME}-worker-1.default.svc,grpc://${TFJOB_NAME}-worker-2.default.svc,grpc://${TFJOB_NAME}-worker-3.default.svc'
                   task:
                     use_synthetic_data: false
                     use_tf_record_reader: true
                     train_data:
-                      input_path: 'gs://chavoshi-checkpoints/tb_tf_record_train_val/tb_tf_record_train_val/train/day_*/*'
+                      input_path: 'gs://${GCS_BUCKET_NAME}/tb_tf_record_train_val/tb_tf_record_train_val/train/day_*/*'
                       global_batch_size: 16384
                       use_cached_data: true
                     validation_data:
-                      input_path: 'gs://chavoshi-checkpoints/tb_tf_record_train_val/tb_tf_record_train_val/eval/day_*/*'
+                      input_path: 'gs://${GCS_BUCKET_NAME}/tb_tf_record_train_val/tb_tf_record_train_val/eval/day_*/*'
                       global_batch_size: 16384
                       use_cached_data: true
                     model:
@@ -89,14 +90,12 @@ spec:
                     eval_tf_while_loop: true
                     use_orbit: false
                     pipeline_sparse_and_dense_execution: true"
-              image: us-central2-docker.pkg.dev/tpu-vm-gke-testing/tpu-repo/dlrm-master:latest
+              image: ${MASTER_IMAGE_URL}
               imagePullPolicy: Always
               env:
                 - name: TF_JOB_PACKAGE_URIS
                   value: ""
-              resources:
-                limits: {}
-                requests: {}
+              resources: {}
     Worker:
       replicas: 4
       restartPolicy: ExitCode
@@ -107,8 +106,8 @@ spec:
           labels:
             app: tfjob
         spec:
+          serviceAccountName: chavoshi-dlrm-job-sa
           nodeSelector:
-            cloud.google.com/gke-nodepool: v6e-16
             cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
             cloud.google.com/gke-tpu-topology: 4x4
           tolerations:
@@ -131,12 +130,12 @@ spec:
                 - name: PYTHONUNBUFFERED
                   value: "1"
                 - name: TPU_WORKER_HOSTNAMES
-                  value: "tf-16-dlrm-tfjob-gcs-worker-0.default.svc,tf-16-dlrm-tfjob-gcs-worker-1.default.svc,tf-16-dlrm-tfjob-gcs-worker-2.default.svc,tf-16-dlrm-tfjob-gcs-worker-3.default.svc"
+                  value: "${TFJOB_NAME}-worker-0.default.svc,${TFJOB_NAME}-worker-1.default.svc,${TFJOB_NAME}-worker-2.default.svc,${TFJOB_NAME}-worker-3.default.svc"
                 - name: HOSTNAME
                   valueFrom:
                     fieldRef:
                       fieldPath: metadata.labels['training.kubeflow.org/replica-index']
-              image: us-central2-docker.pkg.dev/tpu-vm-gke-testing/tpu-repo/dlrm-worker:latest
+              image: ${WORKER_IMAGE_URL}
               imagePullPolicy: Always
               resources:
                 limits:
