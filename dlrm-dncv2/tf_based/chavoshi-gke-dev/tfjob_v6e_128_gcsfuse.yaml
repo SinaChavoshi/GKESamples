@@ -49,7 +49,7 @@ spec:
                     use_tf_record_reader: true
                     train_data:
                       input_path: '/gcs/tb_tf_record_train_val/tb_tf_record_train_val/train/day_*/*'
-                      global_batch_size: 16384
+                      global_batch_size: 4096
                       use_cached_data: true
                     validation_data:
                       input_path: '/gcs/tb_tf_record_train_val/tb_tf_record_train_val/eval/day_*/*'
