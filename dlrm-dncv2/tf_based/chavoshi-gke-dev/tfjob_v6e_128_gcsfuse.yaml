@@ -54,7 +54,7 @@ spec:
                     use_tf_record_reader: true
                     train_data:
                       input_path: '/gcs/tb_tf_record_train_val/tb_tf_record_train_val/train/day_*/*'
-                      global_batch_size: 4096
+                      global_batch_size: 16384
                       use_cached_data: true
                     validation_data:
                       input_path: '/gcs/tb_tf_record_train_val/tb_tf_record_train_val/eval/day_*/*'
@@ -110,6 +110,8 @@ spec:
               image: ${MASTER_IMAGE_URL}
               imagePullPolicy: Always
               env:
+                - name: LIBTPU_INIT_ARGS
+                  value: "--xla_tpu_embedding_table_oblongness_threshold=inf --copy_with_dynamic_shape_op_output_pjrt_buffer=true"
                 - name: TF_JOB_PACKAGE_URIS
                   value: ""
               resources: {}
@@ -155,6 +157,8 @@ spec:
                 - |
                   tpu_tfjob_worker.sh
               env:
+                - name: LIBTPU_INIT_ARGS
+                  value: "--xla_tpu_embedding_table_oblongness_threshold=inf --copy_with_dynamic_shape_op_output_pjrt_buffer=true"
                 - name: PYTHONUNBUFFERED
                   value: "1"
                 - name: TPU_WORKER_HOSTNAMES
