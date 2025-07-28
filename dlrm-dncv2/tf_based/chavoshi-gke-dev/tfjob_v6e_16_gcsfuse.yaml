@@ -106,14 +106,6 @@ spec:
               env:
                 - name: TF_JOB_PACKAGE_URIS
                   value: ""
-                - name: TF_CPP_MIN_LOG_LEVEL
-                  value: "0"
-                - name: TPU_STDERR_LOG_LEVEL
-                  value: "0"
-                - name: TPU_MIN_LOG_LEVEL
-                  value: "0"
-                - name: TPU_VLOG_LEVEL
-                  value: "0"
               resources: {}
     Worker:
       replicas: 4
@@ -135,6 +127,7 @@ spec:
                   bucketName: ${GCS_BUCKET_NAME}
                   mountOptions: "implicit-dirs"
           nodeSelector:
+            cloud.google.com/gke-nodepool: v6e-16-sp
             cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
             cloud.google.com/gke-tpu-topology: 4x4
           tolerations:
@@ -159,14 +152,6 @@ spec:
               env:
                 - name: PYTHONUNBUFFERED
                   value: "1"
-                - name: TF_CPP_MIN_LOG_LEVEL
-                  value: "0"
-                - name: TPU_STDERR_LOG_LEVEL
-                  value: "0"
-                - name: TPU_MIN_LOG_LEVEL
-                  value: "0"
-                - name: TPU_VLOG_LEVEL
-                  value: "0"
                 - name: TPU_WORKER_HOSTNAMES
                   value: "${TFJOB_NAME}-worker-0.default.svc,${TFJOB_NAME}-worker-1.default.svc,${TFJOB_NAME}-worker-2.default.svc,${TFJOB_NAME}-worker-3.default.svc"
                 - name: HOSTNAME

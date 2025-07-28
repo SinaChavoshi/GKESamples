@@ -17,6 +17,8 @@ spec:
           labels:
             app: tfjob
         spec:
+          nodeSelector:
+            cloud.google.com/gke-nodepool: default-pool
           serviceAccountName: chavoshi-dlrm-job-sa
           containers:
             - name: tensorflow
@@ -108,6 +110,7 @@ spec:
         spec:
           serviceAccountName: chavoshi-dlrm-job-sa
           nodeSelector:
+            cloud.google.com/gke-nodepool: v6e-16-sp-2
             cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
             cloud.google.com/gke-tpu-topology: 4x4
           tolerations:

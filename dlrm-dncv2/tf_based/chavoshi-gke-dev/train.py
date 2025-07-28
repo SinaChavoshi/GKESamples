@@ -14,14 +14,26 @@
 
 """Train and evaluate the Ranking model."""
 
-import time  # Import the time module to measure duration
-from typing import Dict
+import time
+from typing import Dict, Mapping, Optional
 
 from absl import app
 from absl import flags
 from absl import logging
 
-import tensorflow as tf, tf_keras
+import tensorflow as tf
+import tf_keras
+
+# --- Imports for Monkey-Patching ---
+# This block contains the specific, low-level imports needed for the patch to work.
+# CORRECTED: Importing 'restore' instead of 'trackable_reader'.
+from tensorflow.python.checkpoint import restore
+from tensorflow.python.ops import io_ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
+# --- End of Imports for Monkey-Patching ---
+
 
 from official.common import distribute_utils
 from official.core import base_trainer
@@ -32,6 +44,111 @@ from official.recommendation.ranking.task import RankingTask
 from official.utils.misc import keras_utils
 
 FLAGS = flags.FLAGS
+
+# --- Start of Monkey-Patching Block for Checkpoint SAVE Timing ---
+from tensorflow.python.checkpoint import functional_saver
+
+# 1. Save a reference to the original save function
+original_saver_save = functional_saver.MultiDeviceSaver.save
+
+# 2. Define the new function with timing logic
+def timed_saver_save(self, file_prefix, options=None):
+  """
+  A wrapper around the original MultiDeviceSaver.save method to log the
+  precise time of the actual file write operation.
+  """
+  logging.info(
+      f"TIMING (SAVE): Preparing to write checkpoint data to prefix '{file_prefix}'..."
+  )
+  start_time = time.time()
+
+  # Call the original function to perform the actual save
+  result = original_saver_save(self, file_prefix, options=options)
+
+  duration = time.time() - start_time
+  logging.info(
+      f"✅ TIMING (SAVE): Actual I/O write for checkpoint to '{file_prefix}' "
+      f"took {duration:.4f} seconds."
+  )
+  return result
+
+# 3. Apply the patch
+functional_saver.MultiDeviceSaver.save = timed_saver_save
+
+logging.info("Monkey-patch for checkpoint SAVE timing has been successfully applied.")
+# --- End of Monkey-Patching Block ---
+
+# --- Start of Monkey-Patching Block for Checkpoint Timing ---
+
+# 1. Save a reference to the original function
+original_value_tensors = restore.CheckpointPosition.value_tensors
+
+# 2. Define the new function with timing logic
+def timed_value_tensors(
+    self, shape_and_slices: Optional[str] = None
+) -> Mapping[str, tensor.Tensor]:
+  """
+  A wrapper around the original value_tensors method to log the
+  precise time of the io_ops.restore_v2 call.
+  """
+  value_tensors = {}
+  for serialized_tensor in self.object_proto.attributes:
+    checkpoint_key = serialized_tensor.checkpoint_key
+    io_device = self._checkpoint.options.experimental_io_device or "cpu:0"
+    with ops.init_scope():
+      with ops.device(io_device):
+        if (
+            shape_and_slices is not None
+            and serialized_tensor.name in shape_and_slices
+        ):
+          shape_and_slice = shape_and_slices[serialized_tensor.name]
+        else:
+          shape_and_slice = ""
+        checkpoint_keys, full_shape_and_slices = (
+            self.callback.update_restore_inputs(
+                checkpoint_key, shape_and_slice
+            )
+        )
+        dtypes = []
+        for key in checkpoint_keys:
+          dtype = self._checkpoint.dtype_map[key]
+          dtypes.append(dtype.base_dtype)
+
+        # --- TIMING LOGIC ADDED HERE ---
+        logging.info(
+            f"TIMING: Preparing to restore tensor '{serialized_tensor.name}' "
+            f"with key '{checkpoint_key}'..."
+        )
+        start_time = time.time()
+
+        restored_values = io_ops.restore_v2(
+            prefix=self._checkpoint.save_path_tensor,
+            tensor_names=checkpoint_keys,
+            shape_and_slices=full_shape_and_slices,
+            dtypes=dtypes,
+            name="%s_checkpoint_read" % (serialized_tensor.name,),
+        )
+
+        duration = time.time() - start_time
+        logging.info(
+            f"✅ TIMING: Restore of tensor '{serialized_tensor.name}' "
+            f"took {duration:.4f} seconds."
+        )
+        # --- END OF TIMING LOGIC ---
+
+        value = self.callback.reshard(
+            restored_values, shape_and_slice
+        )
+      value_tensors[serialized_tensor.name] = array_ops.identity(value)
+  return value_tensors
+
+# 3. Apply the patch: Replace the original function with our new timed version
+# CORRECTED: Targeting the 'value_tensors' method of the 'CheckpointPosition' class.
+restore.CheckpointPosition.value_tensors = timed_value_tensors
+
+logging.info("Monkey-patch for checkpoint restore timing has been successfully applied.")
+
+# --- End of Monkey-Patching Block ---
 
 
 class RankingTrainer(base_trainer.Trainer):
@@ -106,7 +223,7 @@ class TimedStepCheckpoint(tf_keras.callbacks.Callback):
   def on_train_batch_end(self, batch, logs=None):
     """Overrides on_train_batch_end to save a checkpoint at the correct step."""
     # Get the current step from the checkpoint manager's tracked step counter.
-    step = self._checkpoint_manager.step_counter.numpy()
+    step = self._checkpoint_manager._step_counter.numpy()
     interval = self._checkpoint_manager.checkpoint_interval
     # Check if a checkpoint should be saved at this step.
     if interval and step > 0 and step % interval == 0:

@@ -1,37 +1,63 @@
 #!/bin/bash
 set -e
 
-## ------------------- Configuration ------------------- ##
-export PROJECT_ID="tpu-prod-env-one-vm"
-export CLUSTER_REGION="us-east5"
-export CLUSTER_ZONE="us-east5-b"
-export CLUSTER_NAME="chavoshi-benchmark-us-east5b"
-export AR_REGION="us-east5"
-export AR_REPO_NAME="tpu-repo"
-export GCS_BUCKET_NAME="chavoshi-dlrm-training"
-export IMAGE_TAG="latest"
-export MASTER_IMAGE_NAME="dlrm-master-timed"
-export WORKER_IMAGE_NAME="dlrm-worker-timed"
-
 # --- Color definitions ---
 ORANGE='\033[38;5;208m'
 GREEN='\033[0;32m'
 NC='\033[0m' # No Color
 
 ## ------------------- Argument Parsing ------------------- ##
-if [ -z "$1" ]; then
-    echo -e "${ORANGE}Usage: $0 {16-gcs | 16-gcsfuse | 128-gcs | 128-gcsfuse} [--rebuild]${NC}"
+if [ "$#" -lt 2 ]; then
+    echo -e "${ORANGE}Usage: $0 {test | prod} {16-gcs | 16-gcsfuse | 128-gcs | 128-gcsfuse} [--rebuild]${NC}"
     exit 1
 fi
 
-CONFIG=$1
+PROJECT_ALIAS=$1
+CONFIG=$2
 REBUILD_FLAG=false
 
-for arg in "$@"; do
+# Check for the --rebuild flag starting from the 3rd argument
+for arg in "${@:3}"; do
     if [ "$arg" == "--rebuild" ]; then
         REBUILD_FLAG=true
     fi
 done
+
+## ------------------- Dynamic Configuration ------------------- ##
+echo -e "${GREEN}Setting up configuration for project alias: '${PROJECT_ALIAS}'${NC}"
+
+# Set project-specific variables based on the chosen alias
+case $PROJECT_ALIAS in
+    test)
+        export PROJECT_ID="tpu-vm-gke-testing"
+        export CLUSTER_REGION="us-central2"
+        export CLUSTER_NAME="chavoshi-test"
+        export AR_REGION="us-central2"
+        export GCS_BUCKET_NAME="chavoshi-checkpoints"
+        # Flag for regional cluster
+        export GKE_LOCATION_FLAG="--region ${CLUSTER_REGION}"
+        ;;
+    prod)
+        export PROJECT_ID="tpu-prod-env-one-vm"
+        export CLUSTER_REGION="us-east5"
+        export CLUSTER_ZONE="us-east5-b"
+        export CLUSTER_NAME="chavoshi-benchmark-us-east5b"
+        export AR_REGION="us-east5"
+        export GCS_BUCKET_NAME="chavoshi-dlrm-training"
+        # Flag for zonal cluster
+        export GKE_LOCATION_FLAG="--zone ${CLUSTER_ZONE}"
+        ;;
+    *)
+        echo -e "${ORANGE}Error: Invalid project alias '$PROJECT_ALIAS'. Choose 'test' or 'prod'.${NC}"
+        exit 1
+        ;;
+esac
+
+# Shared configuration
+export AR_REPO_NAME="tpu-repo"
+export IMAGE_TAG="latest"
+export MASTER_IMAGE_NAME="dlrm-master-timed"
+export WORKER_IMAGE_NAME="dlrm-worker-timed"
 
 # Set YAML Template and Job Name based on the selected configuration
 case $CONFIG in
@@ -58,24 +84,18 @@ case $CONFIG in
         ;;
 esac
 
-echo -e "${GREEN}Running with configuration: $CONFIG${NC}"
+echo -e "${GREEN}Running with job configuration: $CONFIG${NC}"
 
 ## ------------------- Define Image URLs ------------------- ##
 export MASTER_IMAGE_URL="${AR_REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO_NAME}/${MASTER_IMAGE_NAME}:${IMAGE_TAG}"
 export WORKER_IMAGE_URL="${AR_REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO_NAME}/${WORKER_IMAGE_NAME}:${IMAGE_TAG}"
 
-
 ## ------------------- Authenticate & Configure ------------------- ##
 echo -e "${ORANGE}🔌 Connecting to GKE cluster: ${CLUSTER_NAME}...${NC}"
-gcloud container clusters get-credentials ${CLUSTER_NAME} --zone ${CLUSTER_ZONE} --project ${PROJECT_ID}
+gcloud container clusters get-credentials ${CLUSTER_NAME} ${GKE_LOCATION_FLAG} --project ${PROJECT_ID}
 
 echo -e "${ORANGE}🔐 Configuring Docker...${NC}"
 gcloud auth configure-docker "${AR_REGION}-docker.pkg.dev"
-
-## ------------------- Delete old TFJob ------------------- ##
-echo -e "${ORANGE}🧹 Cleaning up any pre-existing TFJob '${TFJOB_NAME}'...${NC}"
-kubectl delete tfjob ${TFJOB_NAME} -n default --ignore-not-found=true --wait=false
-
 
 ## ------------------- Ensure Artifact Registry Repo Exists ------------------- ##
 echo -e "${ORANGE}🔎 Checking for Artifact Registry repository '${AR_REPO_NAME}'...${NC}"
@@ -111,8 +131,8 @@ fi
 
 ## ------------------- TFJob Deployment & Logging ------------------- ##
 echo -e "${ORANGE}▶️  Starting process for TFJob: ${TFJOB_NAME}${NC}"
-
-kubectl get pods 
+echo -e "${ORANGE}🧹 Cleaning up any pre-existing TFJob '${TFJOB_NAME}'...${NC}"
+kubectl delete tfjob ${TFJOB_NAME} -n default --ignore-not-found=true --wait=false
 
 echo -e "${ORANGE}🚢 Generating and deploying TFJob from template '${YAML_FILE}'...${NC}"
 envsubst < "${YAML_FILE}" | kubectl apply -f -
