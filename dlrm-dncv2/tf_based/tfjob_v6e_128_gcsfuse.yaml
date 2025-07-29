@@ -47,7 +47,7 @@ spec:
                   --tf_mlir_enable_merge_control_flow_pass=true" python3 /models/official/recommendation/ranking/train.py  --mode=train     --model_dir="/gcs/v6e_128/" --params_override="
                   runtime:
                     distribution_strategy: tpu
-                    mixed_precision_dtype: 'mixed_bfloat16'
+                    # mixed_precision_dtype: 'mixed_bfloat16'
                     tpu: 'grpc://${TFJOB_NAME}-worker-0.default.svc,grpc://${TFJOB_NAME}-worker-1.default.svc,grpc://${TFJOB_NAME}-worker-2.default.svc,grpc://${TFJOB_NAME}-worker-3.default.svc,grpc://${TFJOB_NAME}-worker-4.default.svc,grpc://${TFJOB_NAME}-worker-5.default.svc,grpc://${TFJOB_NAME}-worker-6.default.svc,grpc://${TFJOB_NAME}-worker-7.default.svc,grpc://${TFJOB_NAME}-worker-8.default.svc,grpc://${TFJOB_NAME}-worker-9.default.svc,grpc://${TFJOB_NAME}-worker-10.default.svc,grpc://${TFJOB_NAME}-worker-11.default.svc,grpc://${TFJOB_NAME}-worker-12.default.svc,grpc://${TFJOB_NAME}-worker-13.default.svc,grpc://${TFJOB_NAME}-worker-14.default.svc,grpc://${TFJOB_NAME}-worker-15.default.svc,grpc://${TFJOB_NAME}-worker-16.default.svc,grpc://${TFJOB_NAME}-worker-17.default.svc,grpc://${TFJOB_NAME}-worker-18.default.svc,grpc://${TFJOB_NAME}-worker-19.default.svc,grpc://${TFJOB_NAME}-worker-20.default.svc,grpc://${TFJOB_NAME}-worker-21.default.svc,grpc://${TFJOB_NAME}-worker-22.default.svc,grpc://${TFJOB_NAME}-worker-23.default.svc,grpc://${TFJOB_NAME}-worker-24.default.svc,grpc://${TFJOB_NAME}-worker-25.default.svc,grpc://${TFJOB_NAME}-worker-26.default.svc,grpc://${TFJOB_NAME}-worker-27.default.svc,grpc://${TFJOB_NAME}-worker-28.default.svc,grpc://${TFJOB_NAME}-worker-29.default.svc,grpc://${TFJOB_NAME}-worker-30.default.svc,grpc://${TFJOB_NAME}-worker-31.default.svc'
                   task:
                     use_synthetic_data: false
@@ -63,22 +63,21 @@ spec:
                     model:
                       num_dense_features: 13
                       bottom_mlp: [512, 256, 128]
-                      embedding_dim: 64
-                      interaction: 'multi_layer_dcn'
+                      embedding_dim: 128
+                      interaction: 'dot'
                       dcn_num_layers: 3
                       dcn_low_rank_dim: 512
-                      size_threshold: 8000
+                      size_threshold: 50000
                       top_mlp: [1024, 1024, 512, 256, 1]
-                      use_multi_hot: true
-                      concat_dense: false
+                      use_multi_hot: false
+                      concat_dense: true
                       dcn_use_bias: true
-                      vocab_sizes: [40000768,39060,17295,7424,20265,3,7122,1543,63,40000768,3067956,405282,10,2209,11938,155,4,976,14,40000768,40000768,40000768,590152,12973,108,36]
-                      multi_hot_sizes: [3,2,1,2,6,1,1,1,1,7,3,8,1,6,9,5,1,1,1,12,100,27,10,3,1,1]
+                      vocab_sizes: [39884406,39043,17289,7420,20263,3,7120,1543,63,38532951,2953546,403346,10,2208,11938,155,4,976,14,39979771,25641295,39664984,585935,12972,108,36]
+                      multi_hot_sizes: []
                       max_ids_per_chip_per_sample: 128
                       max_ids_per_table: 4096
                       max_unique_ids_per_table: 2048
                       use_partial_tpu_embedding: false
-                      size_threshold: 0
                       initialize_tables_on_host: true
                   trainer:
                     train_steps: 10000
@@ -88,14 +87,14 @@ spec:
                     steps_per_loop: 1000
                     checkpoint_interval: 1000
                     optimizer_config:
-                      embedding_optimizer: 'Adagrad'
-                      dense_optimizer: 'Adagrad'
+                      embedding_optimizer: 'SGD'
+                      dense_optimizer: 'SGD'
                       lr_config:
                         decay_exp: 2
                         decay_start_steps: 70000
                         decay_steps: 30000
                         learning_rate: 0.025
-                        warmup_steps: 0
+                        warmup_steps: 8000
                       dense_sgd_config:
                         decay_exp: 2
                         decay_start_steps: 70000
@@ -106,7 +105,7 @@ spec:
                     train_tf_while_loop: true
                     eval_tf_while_loop: true
                     use_orbit: false
-                    pipeline_sparse_and_dense_execution: true"
+                    pipeline_sparse_and_dense_execution: false"
               image: ${MASTER_IMAGE_URL}
               imagePullPolicy: Always
               env:

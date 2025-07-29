@@ -1,5 +1,5 @@
 # Use the official Python 3.12 image, as required.
-FROM python:3.12-slim
+FROM python:3.10-bullseye
 
 # Set the working directory inside the container
 WORKDIR /app
@@ -21,21 +21,23 @@ RUN pip install --no-cache-dir \
     optax \
     jaxtyping \
     tensorflow \
-    scikit-learn
+    scikit-learn \
+    clu \
+    tensorflow-datasets
 
 # Install the correct JAX version for TPUs
+RUN pip install -U https://storage.googleapis.com/jax-tpu-embedding-whls/20250604/jax_tpu_embedding-0.1.0.dev20250604-cp310-cp310-manylinux_2_35_x86_64.whl --force
 RUN pip install -U "jax[tpu]>0.4.23" -f https://storage.googleapis.com/jax-releases/libtpu_releases.html
 
 # Clone the recml repo to ensure the latest version is used.
 # TODO: Please replace with the correct internal git URL for your project if needed.
-RUN git clone https://github.com/google/recml.git /app/recml
+RUN git clone https://github.com/AI-Hypercomputer/RecML.git /app/recml
 
 # Add the cloned repository to the PYTHONPATH to make it importable.
 ENV PYTHONPATH="/app/recml:${PYTHONPATH}"
 
-# Copy your application code into the container
-COPY dlrm_experiment.py .
-COPY main.py .
 
-# Define the command to run when the container starts
-CMD ["python", "main.py"]
+# COPY dlrm_main.py recml/inference/models/jax/DLRM_DCNv2/
+
+ENV PYTHONPATH="/app/recml:${PYTHONPATH}"
+WORKDIR /app/recml/RecML

@@ -12,6 +12,9 @@ spec:
         spec:
           backoffLimit: 0
           template:
+            metadata:
+              annotations:
+                gke-gcsfuse/volumes: "true"
             spec:
               serviceAccountName: chavoshi-dlrm-job-sa
               nodeSelector:
@@ -30,20 +33,40 @@ spec:
                       bucketName: ${GCS_BUCKET_NAME}
                       mountOptions: "implicit-dirs"
               containers:
-                - name: jax-dlrm-container
+                - name: jax-dlrm
                   image: ${JAX_IMAGE_URL}
                   imagePullPolicy: Always
-                  command: ["python3", "/app/train_jax.py"]
+                  command: ["python", "recml/inference/models/jax/DLRM_DCNv2/dlrm_main.py"]
                   args:
-                    - --train_data_path=/gcs/tb_tf_record_train_val/tb_tf_record_train_val/train/day_*/*
-                    - --eval_data_path=/gcs/tb_tf_record_train_val/tb_tf_record_train_val/eval/day_*/*
-                    - --global_batch_size=65536 # Increased batch size for larger slice
-                    - --train_steps=1000
-                    - --eval_steps=100
+                    - --learning_rate=${LEARNING_RATE}
+                    - --batch_size=${BATCH_SIZE}
+                    - --embedding_size=${EMBEDDING_SIZE}
+                    - --embedding_threshold=${EMBEDDING_THRESHOLD}
+                    - --model_dir=${MODEL_DIR}
+                    - --file_pattern=${FILE_PATTERN}
+                    - --num_steps=${NUM_STEPS}
+                    - --save_checkpoint_interval=${CHECKPOINT_INTERVAL}
+                    - --restore_checkpoint=True
+                    - --eval_interval=${EVAL_INTERVAL}
+                    - --eval_file_pattern=${EVAL_FILE_PATTERN}
+                    - --eval_steps=${EVAL_STEPS}
+                    - --mode=train
+                    - --logging_interval=${LOGGING_INTERVAL}
                   volumeMounts:
                     - name: gcs-fuse-volume
                       mountPath: /gcs
-                      readOnly: true
+                      readOnly: false
+                  env:
+                    - name: JAX_PROCESS_COUNT
+                      valueFrom:
+                        fieldRef:
+                          fieldPath: metadata.annotations['jobset.sigs.k8s.io/replicated-job-replicas']
+                    - name: JAX_PROCESS_ID
+                      valueFrom:
+                        fieldRef:
+                          fieldPath: metadata.annotations['jobset.sigs.k8s.io/job-index-in-jobset']
+                    - name: JAX_COORDINATOR_ADDRESS
+                      value: "${JOB_NAME}-dlrm-job-0.${JOB_NAME}.default.svc.cluster.local:8476"
                   resources:
                     limits:
                       google.com/tpu: "4"
