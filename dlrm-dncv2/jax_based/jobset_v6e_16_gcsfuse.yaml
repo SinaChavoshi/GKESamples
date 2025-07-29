@@ -2,17 +2,21 @@ apiVersion: jobset.x-k8s.io/v1alpha2
 kind: JobSet
 metadata:
   name: ${JOB_NAME}
-  labels:
-    app.kubernetes.io/name: ${JOB_NAME}
 spec:
   replicatedJobs:
-    - name: dlrm-job
-      replicas: 4 # 16 chips / 4 chips per worker node = 4 replicas
+    - name: worker
+      replicas: 4 # 16 chips / 4 chips per pod = 4 pods
       template:
         spec:
+          parallelism: 1
+          completions: 1
           backoffLimit: 0
           template:
+            metadata:
+              annotations:
+                gke-gcsfuse/volumes: "true"
             spec:
+              restartPolicy: Never
               serviceAccountName: chavoshi-dlrm-job-sa
               nodeSelector:
                 cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
@@ -30,23 +34,29 @@ spec:
                       bucketName: ${GCS_BUCKET_NAME}
                       mountOptions: "implicit-dirs"
               containers:
-                - name: jax-dlrm-container
+                - name: jax-dlrm
                   image: ${JAX_IMAGE_URL}
                   imagePullPolicy: Always
-                  command: ["python3", "/app/train_jax.py"]
-                  args:
-                    - --train_data_path=/gcs/tb_tf_record_train_val/tb_tf_record_train_val/train/day_*/*
-                    - --eval_data_path=/gcs/tb_tf_record_train_val/tb_tf_record_train_val/eval/day_*/*
-                    - --global_batch_size=16384
-                    - --train_steps=1000
-                    - --eval_steps=100
+
                   volumeMounts:
                     - name: gcs-fuse-volume
                       mountPath: /gcs
-                      readOnly: true
+                  # Pass parameters to the main script
+                  command:
+                    - "python"
+                    - "main.py"
+                    - "--model_dir=/gcs/jax-checkpoints/v6e-16/"
+                    - "--train_data_path=/gcs/tb_tf_record_train_val/tb_tf_record_train_val/train/day_*/*"
+                    - "--eval_data_path=/gcs/tb_tf_record_train_val/tb_tf_record_train_val/eval/day_*/*"
+                    - "--global_batch_size=16384"
                   resources:
                     limits:
                       google.com/tpu: "4"
                     requests:
                       google.com/tpu: "4"
-              restartPolicy: Never
+                  env:
+                    - name: JAX_PROCESS_COUNT
+                      value: "4"
+                    - name: JAX_PRIMARY_ENDPOINT
+                      value: "${JOB_NAME}-worker-0-0.${JOB_NAME}:10000"
+
