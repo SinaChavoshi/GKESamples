@@ -17,7 +17,6 @@ CONFIG=$1
 REBUILD_FLAG=false
 CPU_EVAL_FLAG=false
 
-# Check for flags starting from the 2nd argument
 for arg in "${@:2}"; do
     if [ "$arg" == "--rebuild" ]; then
         REBUILD_FLAG=true
@@ -34,6 +33,7 @@ export CLUSTER_NAME="chavoshi-benchmark-us-east5b"
 export AR_REGION="us-east5"
 export GCS_BUCKET_NAME="chavoshi-dlrm-training"
 export GKE_LOCATION_FLAG="--zone ${CLUSTER_ZONE}"
+export NAMESPACE="default"
 
 # Shared configuration for the repro
 export AR_REPO_NAME="tpu-repo"
@@ -43,7 +43,6 @@ export DOCKERFILE_NAME="Dockerfile"
 export PYTHON_SCRIPT_NAME="training_code.py"
 export YAML_FILE="tfjob-v6e-16-repro.yaml"
 
-# Set Job Name and Training Params based on the selected configuration
 case $CONFIG in
     shuffle)
         export TFJOB_NAME="tpu-v6e-trainer-shuffle"
@@ -85,7 +84,8 @@ fi
 ## ------------------- Generate Worker Hostnames ------------------- ##
 WORKER_HOSTS=""
 for i in {0..3}; do
-    WORKER_HOSTS+="${TFJOB_NAME}-worker-${i}.training.svc,"
+    # --- NECESSARY CHANGE: Use the correct DNS suffix for a standard GKE cluster ---
+    WORKER_HOSTS+="${TFJOB_NAME}-worker-${i}.${NAMESPACE}.svc,"
 done
 export TPU_WORKER_HOSTNAMES=${WORKER_HOSTS%?} # Remove trailing comma
 
@@ -95,7 +95,7 @@ export MASTER_COMMAND="python ${PYTHON_SCRIPT_NAME} --training --checkpoint-dir 
 ## ------------------- TFJob Deployment & Logging ------------------- ##
 echo -e "${BLUE}▶️  Starting process for TFJob: ${TFJOB_NAME}${NC}"
 echo -e "${BLUE}🧹 Cleaning up any pre-existing TFJob '${TFJOB_NAME}'...${NC}"
-kubectl delete tfjob ${TFJOB_NAME} -n default --ignore-not-found=true --wait=false
+kubectl delete tfjob ${TFJOB_NAME} -n ${NAMESPACE} --ignore-not-found=true --wait=false
 sleep 5
 
 echo -e "${BLUE}🚢 Generating and deploying TFJob from template '${YAML_FILE}'...${NC}"
@@ -103,20 +103,20 @@ envsubst < "${YAML_FILE}" | kubectl apply -f -
 echo -e "${GREEN}✅ TFJob '${TFJOB_NAME}' submitted successfully.${NC}"
 
 echo -e "${BLUE}⏳ Waiting for the MASTER pod to start running...${NC}"
-kubectl wait --for=condition=Ready pod -l training.kubeflow.org/job-name=${TFJOB_NAME},training.kubeflow.org/replica-type=master --timeout=15m
+kubectl wait --for=condition=Ready pod -l training.kubeflow.org/job-name=${TFJOB_NAME},training.kubeflow.org/replica-type=master -n ${NAMESPACE} --timeout=15m
 
-echo -e "${BLUE}🪵 Tailing logs for the MASTER pod. Training output appears below. Press Ctrl+C to stop viewing logs.${NC}"
-kubectl logs -f -l training.kubraw.org/job-name=${TFJOB_NAME},training.kubeflow.org/replica-type=master
+echo -e "${BLUE}🪵 Tailing logs for the MASTER pod...${NC}"
+kubectl logs -f -l training.kubeflow.org/job-name=${TFJOB_NAME},training.kubeflow.org/replica-type=master -n ${NAMESPACE}
 
 ## ------------------- CPU Evaluation ------------------- ##
 if [ "$CPU_EVAL_FLAG" = true ]; then
-    echo -e "${BLUE}▶️  Training logs detached. Proceeding with CPU evaluation...${NC}"
+    echo -e "${BLUE}▶️  Training finished. Proceeding with CPU evaluation...${NC}"
     echo -e "${BLUE}⏳ Waiting for training job '${TFJOB_NAME}' to complete successfully...${NC}"
 
-    kubectl wait --for=condition=Succeeded tfjob/${TFJOB_NAME} --timeout=30m
-    
+    kubectl wait --for=condition=Succeeded tfjob/${TFJOB_NAME} -n ${NAMESPACE} --timeout=30m
+
     echo -e "${GREEN}✅ Training job succeeded. Now running evaluation on a local CPU.${NC}"
-    
+
     docker run --rm -it \
         -e USE_CPU_STRATEGY=true \
         -v ~/.config/gcloud:/root/.config/gcloud:ro \

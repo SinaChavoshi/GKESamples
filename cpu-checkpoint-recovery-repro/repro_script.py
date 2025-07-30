@@ -34,8 +34,7 @@ tf.random.set_seed(SEED)
 os.environ['TF_DETERMINISTIC_OPS'] = '1'
 
 # Constants
-GCS_BUCKET = os.environ.get('GCS_BUCKET_NAME', 'kkukreja-playground-us-central2')
-GCS_BUCKET_PATH = f'gs://{GCS_BUCKET}/'
+GCS_BUCKET_PATH = 'gs://chavoshi-dlrm-training'
 GLOBAL_BATCH_SIZE = 16 * 64
 MOVIE_VOCAB_SIZE = 2048
 USER_VOCAB_SIZE = 2048

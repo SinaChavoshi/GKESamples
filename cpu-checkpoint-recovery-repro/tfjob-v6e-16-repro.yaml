@@ -15,7 +15,7 @@ spec:
           labels:
             training.kubeflow.org/job-name: ${TFJOB_NAME}
         spec:
-          # serviceAccountName: training-worker
+          serviceAccountName: chavoshi-dlrm-job-sa
           nodeSelector:
             cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
             cloud.google.com/gke-tpu-topology: 4x4
@@ -65,7 +65,7 @@ spec:
           labels:
             training.kubeflow.org/job-name: ${TFJOB_NAME}
         spec:
-          # serviceAccountName: training-worker
+          serviceAccountName: chavoshi-dlrm-job-sa
           nodeSelector:
             cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
             cloud.google.com/gke-tpu-topology: 4x4
