@@ -161,14 +161,13 @@ class TrainMetrics(clu_metrics.Collection):
   """Metrics for the training loop."""
   loss: metrax.Average
   accuracy: metrax.Accuracy
-  auc: metrax.AUCROC
+
 
 @flax.struct.dataclass
 class EvalMetrics(clu_metrics.Collection):
   """Metrics for the evaluation loop."""
   loss: metrax.Average
   accuracy: metrax.Accuracy
-  auc: metrax.AUCROC
 
 
 class DLRMDataLoader:
@@ -322,15 +321,10 @@ def eval_loop(
   metrics_on_host = jax.device_get(eval_metrics_collection)
   loss_val = metrics_on_host.loss.compute()
   accuracy_val = metrics_on_host.accuracy.compute()
-  try:
-    auc_val = metrics_on_host.auc.compute()
-  except (ValueError, ZeroDivisionError):
-    auc_val = 0.5
   info(
-      "Evaluation results: loss=%.5f, accuracy=%.5f, auc=%.5f",
+      "Evaluation results: loss=%.5f, accuracy=%.5f",
       loss_val,
       accuracy_val,
-      auc_val,
   )
 
 
@@ -351,7 +345,6 @@ def eval_step(
   metric_updates = EvalMetrics.empty().replace(
       loss=metrax.Average.from_model_output(values=loss),
       accuracy=metrax.Accuracy.from_model_output(binarized_preds, labels),
-      auc=metrax.AUCROC.from_model_output(preds, labels),
   )
   return metrics_collection.merge(metric_updates)
 
@@ -428,7 +421,6 @@ def train_loop(
     metric_updates = TrainMetrics.empty().replace(
         loss=metrax.Average.from_model_output(values=loss_val),
         accuracy=metrax.Accuracy.from_model_output(binarized_preds, labels),
-        auc=metrax.AUCROC.from_model_output(preds, labels),
     )
     metrics_collection = metrics_collection.merge(metric_updates)
     updates, new_opt_state = tx.update(grads, opt_state)
@@ -436,6 +428,7 @@ def train_loop(
     return new_params, new_opt_state, metrics_collection
 
   start_time = time.time()
+  overall_start_time = time.time()
   train_metrics_collection = TrainMetrics.empty()
   for step in range(initial_step, _NUM_STEPS.value):
     with jax.profiler.StepTraceAnnotation("train_step", step_num=step):
@@ -449,16 +442,12 @@ def train_loop(
     if current_step % _LOGGING_INTERVAL.value == 0:
       end_time = time.time()
       metrics_on_host = jax.device_get(train_metrics_collection)
-      try:
-        with jax.default_device(jax.devices("cpu")[0]):
-          auc_val = metrics_on_host.auc.compute()
-      except (ValueError, ZeroDivisionError):
-        auc_val = 0.5
+      elapsed_time = end_time - start_time
+      throughput = _BATCH_SIZE.value * _LOGGING_INTERVAL.value / elapsed_time
       info(
-          "Step %d: loss=%.5f, accuracy=%.5f, auc=%.5f, step_time=%.2fms",
+          "Step %d: loss=%.5f, accuracy=%.5f, throughput=%.2f examples/sec",
           current_step, metrics_on_host.loss.compute(),
-          metrics_on_host.accuracy.compute(), auc_val,
-          (end_time - start_time) * 1000 / _LOGGING_INTERVAL.value
+          metrics_on_host.accuracy.compute(), throughput
       )
       train_metrics_collection = TrainMetrics.empty()
       start_time = time.time()
@@ -492,6 +481,17 @@ def train_loop(
       checkpointer.save(
           current_step, args=ocp.args.PyTreeSave(ckpt_to_save), force=True
       )
+
+  overall_end_time = time.time()
+  total_training_time = overall_end_time - overall_start_time
+  total_steps_trained = _NUM_STEPS.value - initial_step
+  total_examples_processed = total_steps_trained * _BATCH_SIZE.value
+  overall_throughput = total_examples_processed / total_training_time
+  info(
+      "Finished training %d steps in %.2f seconds.",
+      total_steps_trained, total_training_time
+  )
+  info("Overall training throughput: %.2f examples/sec", overall_throughput)
 
   producer.stop()
   checkpointer.wait_until_finished()

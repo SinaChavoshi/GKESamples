@@ -4,7 +4,6 @@ set -ex
 export LEARNING_RATE=0.0034
 export BATCH_SIZE=16896
 export EMBEDDING_SIZE=128
-export MODEL_DIR=/gcs/benchmark/model-output/v6e-16
 export FILE_PATTERN=gs://qinyiyan-vm/mlperf-dataset/criteo_merge_balanced_4224/train-*
 export NUM_STEPS=28000
 export CHECKPOINT_INTERVAL=1500
@@ -16,7 +15,14 @@ export EMBEDDING_THRESHOLD=21000
 export LOGGING_INTERVAL=1500
 export RESTORE_CHECKPOINT=true
 
-python /app/RecML/recml/inference/models/jax/DLRM_DCNv2/dlrm_main.py \
+if [ -z "${MODEL_DIR}" ]; then
+  echo "Error: MODEL_DIR environment variable is not set."
+  exit 1
+fi
+
+echo ">>> Starting DLRMv2 training. Checkpoints will be saved to: ${MODEL_DIR}"
+
+python /app/recml/inference/models/jax/DLRM_DCNv2/dlrm_main.py \
   --learning_rate=${LEARNING_RATE} \
   --batch_size=${BATCH_SIZE} \
   --embedding_size=${EMBEDDING_SIZE} \
@@ -28,6 +34,6 @@ python /app/RecML/recml/inference/models/jax/DLRM_DCNv2/dlrm_main.py \
   --restore_checkpoint=${RESTORE_CHECKPOINT} \
   --eval_interval=${EVAL_INTERVAL} \
   --eval_file_pattern=${EVAL_FILE_PATTERN} \
-  --eval_steps=${EVAL_STEPS}  \
+  --eval_steps=${EVAL_STEPS} \
   --mode=${MODE} \
   --logging_interval=${LOGGING_INTERVAL}

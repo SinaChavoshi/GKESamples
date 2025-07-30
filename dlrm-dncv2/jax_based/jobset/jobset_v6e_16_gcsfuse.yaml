@@ -23,7 +23,7 @@ metadata:
     alpha.jobset.sigs.k8s.io/exclusive-topology: cloud.google.com/gke-nodepool
 spec:
   failurePolicy:
-    maxRestarts: 4
+    maxRestarts: 1
   replicatedJobs:
     - name: dlrm-job
       replicas: 1
@@ -69,36 +69,17 @@ spec:
                   # Added privileged security context from the official example.
                   securityContext:
                     privileged: true
-                  # The command is now wrapped in a shell to install the correct JAX version first.
-                  command: ["/bin/bash", "-c"]
-                  args:
-                    - |
-                      set -ex
-                      echo ">>> Installing compatible JAX and libtpu versions to fix PJRT error..."
-                      pip install -U "jax[tpu]>0.4.23" -f https://storage.googleapis.com/jax-releases/libtpu_releases.html
-                      echo ">>> Installation complete. Starting training script..."
-                      python /app/recml/inference/models/jax/DLRM_DCNv2/dlrm_main.py \
-                        --verbosity=1 \
-                        --learning_rate=${LEARNING_RATE:-0.001} \
-                        --batch_size=${BATCH_SIZE:-16384} \
-                        --embedding_size=${EMBEDDING_SIZE:-128} \
-                        --embedding_threshold=${EMBEDDING_THRESHOLD:-10000} \
-                        --model_dir=${MODEL_DIR:-/gcs/model-output} \
-                        --file_pattern=${FILE_PATTERN:-/gcs/tb_tf_record_train_val/tb_tf_record_train_val/train/day_*/*} \
-                        --num_steps=${NUM_STEPS:-1000} \
-                        --save_checkpoint_interval=${CHECKPOINT_INTERVAL:-100} \
-                        --restore_checkpoint=True \
-                        --eval_interval=${EVAL_INTERVAL:-100} \
-                        --eval_file_pattern=${EVAL_FILE_PATTERN:-/gcs/tb_tf_record_train_val/tb_tf_record_train_val/eval/day_*/*} \
-                        --eval_steps=${EVAL_STEPS:-100} \
-                        --mode=train \
-                        --logging_interval=${LOGGING_INTERVAL:-10}
+                  # The command now simply executes the script baked into the Docker image.
+                  # All installations and logic are handled by the container itself.
+                  command: ["/app/train_and_checkpoint.sh"]
                   volumeMounts:
                     - name: gcs-fuse-volume
                       mountPath: /gcs
                       readOnly: false
                   # Added JAX-specific env variables from the official guide.
                   env:
+                    - name: MODEL_DIR
+                      value: "/gcs/benchmark/model-output/${JOB_NAME}"
                     - name: JAX_PLATFORMS
                       value: "tpu,cpu"
                     - name: ENABLE_PJRT_COMPATIBILITY

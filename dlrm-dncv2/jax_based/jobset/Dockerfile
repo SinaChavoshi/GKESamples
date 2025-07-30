@@ -13,7 +13,7 @@ RUN \
     # 1. Upgrade pip and install setuptools first to handle complex packages.
     pip install --no-cache-dir --upgrade pip "setuptools<60" && \
     \
-    pip install --no-cache-dir protobuf==4.21.12 && \ 
+    pip install --no-cache-dir protobuf==4.21.12 && \
     \
     # 3. Install the CPU-only version of TensorFlow.
     pip install --no-cache-dir tensorflow-cpu==2.19.0 && \
@@ -34,11 +34,23 @@ RUN \
     # 7. Install the remaining high-level libraries.
     pip install --no-cache-dir -U dm-tree flax google-metrax scikit-learn && \
     \
-    pip install --no-cache-dir protobuf==4.21.12 && \ 
+    pip install --no-cache-dir protobuf==4.21.12 && \
     \
     # 8. As the very last step, force-reinstall a numpy version that is
     # compatible with TensorFlow. JAX/nightly builds often install a bleeding-edge
     # numpy, so this step ensures the environment is stable.
     pip install --no-cache-dir "numpy<2.2.0,>=1.26.0" --force-reinstall
 
+# --- New Layers for Custom Script and Final Dependency Fix ---
+
+# 9. Copy the customized training script into the container.
+# This script should be in the same directory where you run `docker build`.
+COPY train_and_checkpoint.sh .
+
+# 10. Make the training script executable.
+RUN chmod +x train_and_checkpoint.sh
+
+# 11. As a final step, install the specific JAX TPU version that is known to be compatible
+# with the TPU hardware, as identified during debugging. This resolves PJRT version errors.
+RUN pip install --no-cache-dir -U "jax[tpu]>0.4.23" -f https://storage.googleapis.com/jax-releases/libtpu_releases.html
 
