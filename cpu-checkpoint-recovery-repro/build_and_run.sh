@@ -8,22 +8,17 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 ## ------------------- Argument Parsing ------------------- ##
-if [ "$#" -lt 2 ]; then
-    echo -e "${ORANGE}Usage: $0 {test} {shuffle | device-assignment} [--rebuild] [--cpu-eval]${NC}"
-    echo -e "${ORANGE}  - 'shuffle': Run the failing scenario using endpoint shuffling.${NC}"
-    echo -e "${ORANGE}  - 'device-assignment': Run the working scenario using DeviceAssignment.${NC}"
-    echo -e "${ORANGE}  - '--rebuild': Force a rebuild of the Docker image.${NC}"
-    echo -e "${ORANGE}  - '--cpu-eval': Run evaluation on CPU after training completes.${NC}"
+if [ "$#" -lt 1 ]; then
+    echo -e "${ORANGE}Usage: $0 {shuffle | device-assignment} [--rebuild] [--cpu-eval]${NC}"
     exit 1
 fi
 
-PROJECT_ALIAS=$1
-CONFIG=$2
+CONFIG=$1
 REBUILD_FLAG=false
 CPU_EVAL_FLAG=false
 
-# Check for flags starting from the 3rd argument
-for arg in "${@:3}"; do
+# Check for flags starting from the 2nd argument
+for arg in "${@:2}"; do
     if [ "$arg" == "--rebuild" ]; then
         REBUILD_FLAG=true
     elif [ "$arg" == "--cpu-eval" ]; then
@@ -32,41 +27,31 @@ for arg in "${@:3}"; do
 done
 
 ## ------------------- Dynamic Configuration ------------------- ##
-echo -e "${GREEN}▶ Setting up configuration for project alias: '${PROJECT_ALIAS}'${NC}"
+# Project and cluster details are hardcoded for this specific repro
+export PROJECT_ID="tpu-prod-env-one-vm"
+export CLUSTER_ZONE="us-east5-b"
+export CLUSTER_NAME="chavoshi-benchmark-us-east5b"
+export AR_REGION="us-east5"
+export GCS_BUCKET_NAME="chavoshi-dlrm-training"
+export GKE_LOCATION_FLAG="--zone ${CLUSTER_ZONE}"
 
-# Set project-specific variables based on the chosen alias
-case $PROJECT_ALIAS in
-    test)
-        export PROJECT_ID="tpu-vm-gke-testing"
-        export CLUSTER_REGION="us-central2"
-        export CLUSTER_NAME="chavoshi-test"
-        export AR_REGION="us-central1"
-        export GCS_BUCKET_NAME="kkukreja-playground-us-central2"
-        export GKE_LOCATION_FLAG="--region ${CLUSTER_REGION}"
-        ;;
-    *)
-        echo -e "${ORANGE}Error: Invalid project alias '$PROJECT_ALIAS'. Choose 'test'.${NC}"
-        exit 1
-        ;;
-esac
-
-# Shared configuration
-export AR_REPO_NAME="tpu-repro-repo"
+# Shared configuration for the repro
+export AR_REPO_NAME="tpu-repo"
 export IMAGE_NAME="tpu-embedding-repro"
 export IMAGE_TAG="latest"
 export DOCKERFILE_NAME="Dockerfile"
-export PYTHON_SCRIPT_NAME="repro_script.py"
+export PYTHON_SCRIPT_NAME="training_code.py"
 export YAML_FILE="tfjob-v6e-16-repro.yaml"
 
 # Set Job Name and Training Params based on the selected configuration
 case $CONFIG in
     shuffle)
-        export TFJOB_NAME="tpu-repro-shuffle"
-        export TRAINING_ENV_VARS="SHUFFLE_ENDPOINTS=true"
+        export TFJOB_NAME="tpu-v6e-trainer-shuffle"
+        export TRAINING_ENV_VARS="SHUFFLE_ENDPOINTS"
         ;;
     device-assignment)
-        export TFJOB_NAME="tpu-repro-da"
-        export TRAINING_ENV_VARS="ENABLE_DEVICE_ASSIGNMENT=true"
+        export TFJOB_NAME="tpu-v6e-trainer-da"
+        export TRAINING_ENV_VARS="ENABLE_DEVICE_ASSIGNMENT"
         ;;
     *)
         echo -e "${ORANGE}Error: Invalid configuration '$CONFIG'. Choose 'shuffle' or 'device-assignment'.${NC}"
@@ -83,28 +68,12 @@ export CHECKPOINT_DIR_GCS="gs://${GCS_BUCKET_NAME}/checkpoints-repro/${TFJOB_NAM
 ## ------------------- Authenticate & Configure ------------------- ##
 echo -e "${BLUE}🔌 Connecting to GKE cluster: ${CLUSTER_NAME}...${NC}"
 gcloud container clusters get-credentials ${CLUSTER_NAME} ${GKE_LOCATION_FLAG} --project ${PROJECT_ID}
-
 echo -e "${BLUE}🔐 Configuring Docker for ${AR_REGION}...${NC}"
 gcloud auth configure-docker "${AR_REGION}-docker.pkg.dev"
 
-## ------------------- Ensure Artifact Registry Repo Exists ------------------- ##
-echo -e "${BLUE}🔎 Checking for Artifact Registry repository '${AR_REPO_NAME}'...${NC}"
-if ! gcloud artifacts repositories describe ${AR_REPO_NAME} --location=${AR_REGION} --project=${PROJECT_ID} &> /dev/null
-then
-    echo -e "${ORANGE}Repository not found. Creating '${AR_REPO_NAME}'...${NC}"
-    gcloud artifacts repositories create ${AR_REPO_NAME} \
-        --repository-format=docker \
-        --location=${AR_REGION} \
-        --project=${PROJECT_ID} \
-        --description="Docker repository for TPU embedding repro"
-    echo -e "${GREEN}✅ Repository created successfully.${NC}"
-else
-    echo -e "${GREEN}✅ Repository already exists.${NC}"
-fi
-
 ## ------------------- Conditional Docker Build & Push ------------------- ##
 if [ "$REBUILD_FLAG" = true ] || ! docker image inspect "${IMAGE_URL}" &> /dev/null; then
-    echo -e "${BLUE}🚀 Building Docker image...${NC}"
+    echo -e "${BLUE}🚀 Building Docker image from '${DOCKERFILE_NAME}'...${NC}"
     docker build -f "${DOCKERFILE_NAME}" -t "${IMAGE_URL}" . --platform linux/amd64
     echo -e "${BLUE}ଠ Pushing image to Artifact Registry...${NC}"
     docker push "${IMAGE_URL}"
@@ -120,8 +89,8 @@ for i in {0..3}; do
 done
 export TPU_WORKER_HOSTNAMES=${WORKER_HOSTS%?} # Remove trailing comma
 
-## ------------------- Define Training Command ------------------- ##
-export TRAINING_COMMAND="${TRAINING_ENV_VARS} python ${PYTHON_SCRIPT_NAME} --training --checkpoint-dir ${CHECKPOINT_DIR_GCS}"
+## ------------------- Define Master Command ------------------- ##
+export MASTER_COMMAND="python ${PYTHON_SCRIPT_NAME} --training --checkpoint-dir ${CHECKPOINT_DIR_GCS}"
 
 ## ------------------- TFJob Deployment & Logging ------------------- ##
 echo -e "${BLUE}▶️  Starting process for TFJob: ${TFJOB_NAME}${NC}"
@@ -134,28 +103,25 @@ envsubst < "${YAML_FILE}" | kubectl apply -f -
 echo -e "${GREEN}✅ TFJob '${TFJOB_NAME}' submitted successfully.${NC}"
 
 echo -e "${BLUE}⏳ Waiting for the MASTER pod to start running...${NC}"
-kubectl wait --for=condition=Ready pod -l training.kubeflow.org/replica-type=master,training.kubeflow.org/job-name=${TFJOB_NAME} --timeout=15m
+kubectl wait --for=condition=Ready pod -l training.kubeflow.org/job-name=${TFJOB_NAME},training.kubeflow.org/replica-type=master --timeout=15m
 
 echo -e "${BLUE}🪵 Tailing logs for the MASTER pod. Training output appears below. Press Ctrl+C to stop viewing logs.${NC}"
-kubectl logs -f -l training.kubeflow.org/replica-type=master,training.kubeflow.org/job-name=${TFJOB_NAME}
+kubectl logs -f -l training.kubraw.org/job-name=${TFJOB_NAME},training.kubeflow.org/replica-type=master
 
 ## ------------------- CPU Evaluation ------------------- ##
 if [ "$CPU_EVAL_FLAG" = true ]; then
-    echo -e "${BLUE}▶️  Training finished. Proceeding with CPU evaluation as requested.${NC}"
+    echo -e "${BLUE}▶️  Training logs detached. Proceeding with CPU evaluation...${NC}"
     echo -e "${BLUE}⏳ Waiting for training job '${TFJOB_NAME}' to complete successfully...${NC}"
 
     kubectl wait --for=condition=Succeeded tfjob/${TFJOB_NAME} --timeout=30m
     
     echo -e "${GREEN}✅ Training job succeeded. Now running evaluation on a local CPU.${NC}"
-    echo -e "${ORANGE}Note: Make sure gcloud is authenticated for GCS access ('gcloud auth application-default login').${NC}"
-
+    
     docker run --rm -it \
         -e USE_CPU_STRATEGY=true \
         -v ~/.config/gcloud:/root/.config/gcloud:ro \
         "${IMAGE_URL}" \
         python "${PYTHON_SCRIPT_NAME}" --checkpoint-dir "${CHECKPOINT_DIR_GCS}"
-else
-    echo -e "${GREEN}▶ Script finished. To run CPU evaluation, re-run with the --cpu-eval flag.${NC}"
 fi
 
 echo -e "${GREEN}✅ All steps completed.${NC}"

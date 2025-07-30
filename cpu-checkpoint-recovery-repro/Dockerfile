@@ -19,26 +19,23 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 ENV LD_PRELOAD "/usr/lib/x86_64-linux-gnu/libtcmalloc_minimal.so.4"
 
-COPY dockerfiles/tpu-training/tpu-runtime.service /etc/systemd/system/tpu-runtime.service
-COPY dockerfiles/tpu-training/tpu_tfjob_worker.sh /usr/local/bin/tpu_tfjob_worker.sh
-RUN chmod +x /usr/local/bin/tpu_tfjob_worker.sh
-
 # Install TPU Tensorflow package
 RUN pip install \
-    --no-cache-dir \
-    --upgrade \
-    pip
+--no-cache-dir \
+--upgrade \
+pip
 RUN pip install --no-cache-dir tf-keras==2.19.0 tensorflow-serving-api==2.19.0
 RUN pip uninstall -y tensorflow
 RUN pip install --no-cache-dir https://storage.googleapis.com/cloud-tpu-tpuvm-artifacts/tensorflow/tf-2.19.0/tensorflow_tpu-2.19.0-cp310-cp310-linux_x86_64.whl
 RUN pip install --no-cache-dir libtpu==0.0.12
+RUN pip install --no-cache-dir tensorflow-datasets
 
 # Clone TFRS to a dir
 RUN git clone https://github.com/tensorflow/recommenders.git /recommenders
 ENV PYTHONPATH "${PYTHONPATH}:/recommenders"
 
-# Add entrypoint.sh
-ADD dockerfiles/entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+COPY tpu-runtime.service /etc/systemd/system/tpu-runtime.service
+COPY training_code.py /training_code.py
+COPY tpu_tfjob_worker.sh /usr/local/bin/tpu_tfjob_worker.sh
+RUN chmod +x /usr/local/bin/tpu_tfjob_worker.sh
 
-ENTRYPOINT ["/entrypoint.sh"]
