@@ -1,136 +1,81 @@
 #!/bin/bash
-set -e
 
-# --- Color definitions ---
-ORANGE='\033[38;5;208m'
-GREEN='\033[0;32m'
-NC='\033[0m' # No Color
+# --- Core Configuration from your Cluster ---
 
-## ------------------- Argument Parsing ------------------- ##
-# Set 'prod' as the default project alias.
-PROJECT_ALIAS="prod"
+export PROJECT_ID="tpu-prod-env-one-vm"
+export CLUSTER_ZONE="us-east5-b"
+export NETWORK_NAME="chavoshi-test"
+export NETWORK_FW_NAME="${NETWORK_NAME}-fw"
 
-# If the first argument is explicitly 'prod', consume it.
-# This makes the 'prod' argument optional.
-if [ "$1" == "prod" ]; then
-  shift # After shift, $2 becomes $1, etc.
-fi
+## v6e-128 TPU Node.
+export NODE_ID="v6e-128-sp"
+export ACCELERATOR_TYPE="v6e-128"
+export RUNTIME_VERSION="v2-alpha-tpuv6e"
 
-# After potentially shifting, we require at least one argument for the configuration.
-if [ "$#" -lt 1 ]; then
-    echo -e "${ORANGE}Usage: $0 [prod] {16 | 128} [--rebuild]${NC}"
-    exit 1
-fi
+# Your project's default service account.
+export SERVICE_ACCOUNT="default@${PROJECT_ID}.iam.gserviceaccount.com"
 
-CONFIG=$1
-REBUILD_FLAG=false
+# Your `v6e-128-sp` node pool is a single, large slice of TPUs.
+export NUM_SLICES="1"
 
-# Check for the --rebuild flag in the remaining arguments (now starting from the 2nd).
-for arg in "${@:2}"; do
-    if [ "$arg" == "--rebuild" ]; then
-        REBUILD_FLAG=true
-    fi
-done
+export QUEUED_RESOURCE_ID="dlrm-queued-request"
+export VALID_DURATION="24h"
+export NETWORK_NAME="chavoshi-test"
 
-## ------------------- Dynamic Configuration ------------------- ##
-echo -e "${GREEN}Setting up configuration for project alias: '${PROJECT_ALIAS}'${NC}"
+# --- This is for demonstration only; you don't need to run this ---
 
-case $PROJECT_ALIAS in
-    prod)
-        export PROJECT_ID="tpu-prod-env-one-vm"
-        export CLUSTER_ZONE="us-east5-b"
-        export CLUSTER_NAME="chavoshi-benchmark-us-east5b"
-        export AR_REGION="us-east5"
-        export GCS_BUCKET_NAME="chavoshi-dlrm-training"
-        export GKE_LOCATION_FLAG="--zone ${CLUSTER_ZONE}"
-        ;;
-    *)
-        echo -e "${ORANGE}Error: Invalid project alias '$PROJECT_ALIAS'. Only 'prod' is configured.${NC}"
-        exit 1
-        ;;
-esac
+## Optimize network performance
+export RESOURCE_NAME="chavoshi-benchmark"
+export NETWORK_NAME="${RESOURCE_NAME}-privatenetwork"
+export NETWORK_FW_NAME="${RESOURCE_NAME}-privatefirewall"
 
-# Shared configuration for the JAX job
-export AR_REPO_NAME="tpu-repo"
-export IMAGE_TAG="latest"
-export JAX_IMAGE_NAME="dlrm-jax-sample"
-# The name of the replicatedJob inside the YAML, used for label selection.
-export REPLICATED_JOB_NAME="dlrm-job"
+## Using multi-NIC (option for Multislice)
+# A base name for the resources, consistent with the previous example.
+export RESOURCE_NAME="chavoshi-benchmark"
 
-# Set YAML Template and Job Name based on the selected configuration
-case $CONFIG in
-    16)
-        export YAML_FILE="jobset_v6e_16_gcsfuse.yaml"
-        export JOB_NAME="jax-16-dlrm-jobset"
-        ;;
-    128)
-        export YAML_FILE="jobset_v6e_128_gcsfuse.yaml"
-        export JOB_NAME="jax-128-dlrm-jobset"
-        ;;
-    *)
-        echo -e "${ORANGE}Error: Invalid configuration '$CONFIG'. Choose 16 or 128.${NC}"
-        exit 1
-        ;;
-esac
+# Variables for the secondary network interface.
+export NETWORK_NAME_2="${RESOURCE_NAME}-secondary-net"
+export SUBNET_NAME_2="${RESOURCE_NAME}-secondary-subnet"
+export FIREWALL_RULE_NAME="${RESOURCE_NAME}-secondary-fw"
+export ROUTER_NAME="${RESOURCE_NAME}-secondary-router"
+export NAT_CONFIG="${RESOURCE_NAME}-secondary-nat"
 
-echo -e "${GREEN}Running with JAX job configuration: $CONFIG${NC}"
 
-## ------------------- Define Image URL ------------------- ##
-export JAX_IMAGE_URL="${AR_REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO_NAME}/${JAX_IMAGE_NAME}:${IMAGE_TAG}"
+### Create an XPK cluster with single NIC support
+# --- Variables for your EXISTING cluster ---
+export CLUSTER_NAME="chavoshi-benchmark-us-east5b"
+export ZONE="us-east5-b"
+export PROJECT_ID="tpu-prod-env-one-vm"
+export TPU_TYPE="v6e-128"
+export NUM_SLICES="1"
+export REGION="us-east5-b"
 
-## ------------------- Authenticate & Configure ------------------- ##
-echo -e "${ORANGE}🔌 Connecting to GKE cluster: ${CLUSTER_NAME}...${NC}"
-gcloud container clusters get-credentials ${CLUSTER_NAME} ${GKE_LOCATION_FLAG} --project ${PROJECT_ID}
+export CLUSTER_ARGUMENTS="--network=${NETWORK_NAME} --subnetwork=${NETWORK_NAME}"
 
-echo -e "${ORANGE}🔐 Configuring Docker...${NC}"
-gcloud auth configure-docker "${AR_REGION}-docker.pkg.dev"
 
-## ------------------- Ensure Artifact Registry Repo Exists ------------------- ##
-echo -e "${ORANGE}🔎 Checking for Artifact Registry repository '${AR_REPO_NAME}'...${NC}"
-if ! gcloud artifacts repositories describe ${AR_REPO_NAME} --location=${AR_REGION} --project=${PROJECT_ID} &> /dev/null
-then
-    echo -e "${ORANGE}Repo not found. Creating '${AR_REPO_NAME}'...${NC}"
-    gcloud artifacts repositories create ${AR_REPO_NAME} \
-        --repository-format=docker \
-        --location=${AR_REGION} \
-        --project=${PROJECT_ID}
-else
-    echo -e "${GREEN}✅ Repository already exists.${NC}"
-fi
 
-## ------------------- Conditional Docker Build & Push ------------------- ##
-if [ "$REBUILD_FLAG" = true ]; then
-    echo -e "${ORANGE}🚀 Rebuilding JAX Docker image as requested...${NC}"
-    docker build -f Dockerfile -t ${JAX_IMAGE_URL} .
-    docker push ${JAX_IMAGE_URL}
-    echo -e "${GREEN}✅ JAX image pushed to ${JAX_IMAGE_URL}.${NC}"
-else
-    echo -e "${GREEN}Skipping Docker build. Using existing images.${NC}"
-fi
+### Launch workload 
+# Your cluster and project details
+export PROJECT_ID="tpu-prod-env-one-vm"
+export CLUSTER_NAME="chavoshi-benchmark-us-east5b"
+export ZONE="us-east5-b"
 
-## ------------------- JobSet Deployment & Logging ------------------- ##
-echo -e "${ORANGE}▶️  Starting process for JobSet: ${JOB_NAME}${NC}"
-echo -e "${ORANGE}🧹 Cleaning up any pre-existing JobSet '${JOB_NAME}'...${NC}"
+# The specs for the TPU slice you want to target
+export TPU_TYPE="v6e-128"
+export NUM_SLICES="1"
 
-# This prevents pods from getting stuck in a "Terminating" state.
-kubectl delete pod -n default -l jobset.sigs.k8s.io/jobset-name=${JOB_NAME} --grace-period=0 --force --ignore-not-found=true
+# The generic Python image, since the command installs JAX
+export DOCKER_IMAGE="python:3.10"
 
-# Delete the JobSet itself.
-kubectl delete jobset ${JOB_NAME} -n default --ignore-not-found=true --wait=true
+# The command from your YAML file, stored in a variable
+export JAX_TEST_COMMAND="pip install -U --pre jax jaxlib libtpu-nightly requests -i https://us-python.pkg.dev/ml-oss-artifacts-published/jax/simple/ -f https://storage.googleapis.com/jax-releases/libtpu_releases.html && JAX_PLATFORMS=tpu,cpu ENABLE_PJRT_COMPATIBILITY=true python -c 'import jax; print(\"Total TPU chips:\", jax.device_count())'"
 
-echo -e "${ORANGE}🚢 Generating and deploying JobSet from template '${YAML_FILE}'...${NC}"
-envsubst < "${YAML_FILE}" | kubectl apply -f -
-echo -e "${GREEN}✅ JobSet '${JOB_NAME}' submitted successfully.${NC}"
-
-echo -e "${ORANGE}⏳ Waiting for the main pod (coordinator) to start running...${NC}"
-kubectl get pods 
-# The label selector now uses the correct JobSet labels to find the coordinator pod (job-index=0).
-kubectl wait --for=condition=Ready pod -l jobset.sigs.k8s.io/jobset-name=${JOB_NAME},jobset.sigs.k8s.io/replicatedjob-name=${REPLICATED_JOB_NAME},jobset.sigs.k8s.io/job-index=0 --timeout=15m
-
-echo -e "${ORANGE}🪵 Tailing logs for the main pod. Training output appears here. Press Ctrl-C to stop.${NC}"
-# The label selector here is also corrected to match the JobSet standard.
-# We log the specific JAX container, not the GCS FUSE sidecar.
-kubectl logs -f -l jobset.sigs.k8s.io/jobset-name=${JOB_NAME},jobset.sigs.k8s.io/replicatedjob-name=${REPLICATED_JOB_NAME},jobset.sigs.k8s.io/job-index=0 -c jax-dlrm
-
-echo -e "${GREEN}✅ Script finished.${NC}"
-
+xpk workload create \
+  --cluster=${CLUSTER_NAME} \
+  --workload="jax-test-via-xpk" \
+  --docker-image=${DOCKER_IMAGE} \
+  --tpu-type=${TPU_TYPE} \
+  --num-slices=${NUM_SLICES} \
+  --project=${PROJECT_ID} \
+  --zone=${ZONE} \
+  --command="${JAX_TEST_COMMAND}"
