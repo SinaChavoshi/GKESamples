@@ -16,6 +16,9 @@ spec:
               annotations:
                 gke-gcsfuse/volumes: "true"
             spec:
+              # FIX 1: Add subdomain to ensure DNS records are created correctly under the JobSet's headless service.
+              # This resolves the "NXDOMAIN" error.
+              subdomain: ${JOB_NAME}-dlrm-job
               serviceAccountName: chavoshi-dlrm-job-sa
               nodeSelector:
                 cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
@@ -36,37 +39,42 @@ spec:
                 - name: jax-dlrm
                   image: ${JAX_IMAGE_URL}
                   imagePullPolicy: Always
-                  command: ["python", "recml/recml/inference/models/jax/DLRM_DCNv2/dlrm_main.py"]
+                  # FIX 2: Use a shell wrapper to reliably set environment variables
+                  # that were previously failing with valueFrom.
+                  command:
+                    - "/bin/sh"
+                    - "-c"
                   args:
-                    - --learning_rate=${LEARNING_RATE}
-                    - --batch_size=${BATCH_SIZE}
-                    - --embedding_size=${EMBEDDING_SIZE}
-                    - --embedding_threshold=${EMBEDDING_THRESHOLD}
-                    - --model_dir=${MODEL_DIR}
-                    - --file_pattern=${FILE_PATTERN}
-                    - --num_steps=${NUM_STEPS}
-                    - --save_checkpoint_interval=${CHECKPOINT_INTERVAL}
-                    - --restore_checkpoint=True
-                    - --eval_interval=${EVAL_INTERVAL}
-                    - --eval_file_pattern=${EVAL_FILE_PATTERN}
-                    - --eval_steps=${EVAL_STEPS}
-                    - --mode=train
-                    - --logging_interval=${LOGGING_INTERVAL}
+                    - |
+                      set -ex
+                      # Set process count directly from the replica count.
+                      export JAX_PROCESS_COUNT=4
+                      # Reliably derive the process ID from the pod's hostname.
+                      export JAX_PROCESS_ID=$(echo $HOSTNAME | cut -d'-' -f5)
+                      # Execute the original python command
+                      python /app/recml/inference/models/jax/DLRM_DCNv2/dlrm_main.py \
+                        --verbosity=1 \
+                        --learning_rate=${LEARNING_RATE} \
+                        --batch_size=${BATCH_SIZE} \
+                        --embedding_size=${EMBEDDING_SIZE} \
+                        --embedding_threshold=${EMBEDDING_THRESHOLD} \
+                        --model_dir=${MODEL_DIR} \
+                        --file_pattern=${FILE_PATTERN} \
+                        --num_steps=${NUM_STEPS} \
+                        --save_checkpoint_interval=${CHECKPOINT_INTERVAL} \
+                        --restore_checkpoint=True \
+                        --eval_interval=${EVAL_INTERVAL} \
+                        --eval_file_pattern=${EVAL_FILE_PATTERN} \
+                        --eval_steps=${EVAL_STEPS} \
+                        --mode=train \
+                        --logging_interval=${LOGGING_INTERVAL}
                   volumeMounts:
                     - name: gcs-fuse-volume
                       mountPath: /gcs
                       readOnly: false
                   env:
-                    - name: JAX_PROCESS_COUNT
-                      valueFrom:
-                        fieldRef:
-                          fieldPath: metadata.annotations['jobset.sigs.k8s.io/replicated-job-replicas']
-                    - name: JAX_PROCESS_ID
-                      valueFrom:
-                        fieldRef:
-                          fieldPath: metadata.annotations['jobset.sigs.k8s.io/job-index-in-jobset']
                     - name: JAX_COORDINATOR_ADDRESS
-                      value: "${JOB_NAME}-dlrm-job-0.${JOB_NAME}.default.svc.cluster.local:8476"
+                      value: "${JOB_NAME}-dlrm-job-0-0.${JOB_NAME}-dlrm-job.default.svc.cluster.local:8476"
                   resources:
                     limits:
                       google.com/tpu: "4"

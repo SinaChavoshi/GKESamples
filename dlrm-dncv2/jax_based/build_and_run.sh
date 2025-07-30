@@ -54,6 +54,8 @@ esac
 export AR_REPO_NAME="tpu-repo"
 export IMAGE_TAG="latest"
 export JAX_IMAGE_NAME="dlrm-jax-sample"
+# The name of the replicatedJob inside the YAML, used for label selection.
+export REPLICATED_JOB_NAME="dlrm-job"
 
 # Set YAML Template and Job Name based on the selected configuration
 case $CONFIG in
@@ -99,7 +101,7 @@ fi
 ## ------------------- Conditional Docker Build & Push ------------------- ##
 if [ "$REBUILD_FLAG" = true ]; then
     echo -e "${ORANGE}🚀 Rebuilding JAX Docker image as requested...${NC}"
-    docker build -f jax.Dockerfile -t ${JAX_IMAGE_URL} .
+    docker build -f Dockerfile -t ${JAX_IMAGE_URL} .
     docker push ${JAX_IMAGE_URL}
     echo -e "${GREEN}✅ JAX image pushed to ${JAX_IMAGE_URL}.${NC}"
 else
@@ -109,20 +111,25 @@ fi
 ## ------------------- JobSet Deployment & Logging ------------------- ##
 echo -e "${ORANGE}▶️  Starting process for JobSet: ${JOB_NAME}${NC}"
 echo -e "${ORANGE}🧹 Cleaning up any pre-existing JobSet '${JOB_NAME}'...${NC}"
-# Use `kubectl delete jobset` for the JAX jobs
-kubectl delete jobset ${JOB_NAME} -n default --ignore-not-found=true --wait=false
+
+# This prevents pods from getting stuck in a "Terminating" state.
+kubectl delete pod -n default -l jobset.sigs.k8s.io/jobset-name=${JOB_NAME} --grace-period=0 --force --ignore-not-found=true
+
+# Delete the JobSet itself.
+kubectl delete jobset ${JOB_NAME} -n default --ignore-not-found=true --wait=true
 
 echo -e "${ORANGE}🚢 Generating and deploying JobSet from template '${YAML_FILE}'...${NC}"
 envsubst < "${YAML_FILE}" | kubectl apply -f -
 echo -e "${GREEN}✅ JobSet '${JOB_NAME}' submitted successfully.${NC}"
 
-echo -e "${ORANGE}⏳ Waiting for the main pod (worker-0-0) to start running...${NC}"
-# JobSet uses specific labels to identify pods. We wait for the main "leader" pod.
-kubectl wait --for=condition=Ready pod -l jobset.sigs.k8s.io/job-name=${JOB_NAME},jobset.sigs.k8s.io/role=worker,jobset.sigs.k8s.io/job-index=0 --timeout=15m
+echo -e "${ORANGE}⏳ Waiting for the main pod (coordinator) to start running...${NC}"
+# The label selector now uses the correct JobSet labels to find the coordinator pod (job-index=0).
+kubectl wait --for=condition=Ready pod -l jobset.sigs.k8s.io/jobset-name=${JOB_NAME},jobset.sigs.k8s.io/replicatedjob-name=${REPLICATED_JOB_NAME},jobset.sigs.k8s.io/job-index=0 --timeout=15m
 
 echo -e "${ORANGE}🪵 Tailing logs for the main pod. Training output appears here. Press Ctrl-C to stop.${NC}"
+# The label selector here is also corrected to match the JobSet standard.
 # We log the specific JAX container, not the GCS FUSE sidecar.
-kubectl logs -f -l jobset.sigs.k8s.io/job-name=${JOB_NAME},jobset.sigs.k8s.io/role=worker,jobset.sigs.k8s.io/job-index=0 -c jax-dlrm
+kubectl logs -f -l jobset.sigs.k8s.io/jobset-name=${JOB_NAME},jobset.sigs.k8s.io/replicatedjob-name=${REPLICATED_JOB_NAME},jobset.sigs.k8s.io/job-index=0 -c jax-dlrm
 
 echo -e "${GREEN}✅ Script finished.${NC}"
 
