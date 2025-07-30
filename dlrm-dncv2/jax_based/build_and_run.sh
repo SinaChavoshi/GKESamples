@@ -123,6 +123,7 @@ envsubst < "${YAML_FILE}" | kubectl apply -f -
 echo -e "${GREEN}✅ JobSet '${JOB_NAME}' submitted successfully.${NC}"
 
 echo -e "${ORANGE}⏳ Waiting for the main pod (coordinator) to start running...${NC}"
+kubectl get pods 
 # The label selector now uses the correct JobSet labels to find the coordinator pod (job-index=0).
 kubectl wait --for=condition=Ready pod -l jobset.sigs.k8s.io/jobset-name=${JOB_NAME},jobset.sigs.k8s.io/replicatedjob-name=${REPLICATED_JOB_NAME},jobset.sigs.k8s.io/job-index=0 --timeout=15m
 

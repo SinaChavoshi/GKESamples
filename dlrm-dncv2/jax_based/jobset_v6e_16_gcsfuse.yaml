@@ -1,3 +1,13 @@
+# This file is now corrected to strictly follow the official Google Cloud
+# documentation for a multi-host TPU JobSet on GKE.
+
+# Key changes based on the guide:
+# 1. Removed all manual `JAX_PROCESS_ID`, `JAX_PROCESS_COUNT`, and
+#    `JAX_COORDINATOR_ADDRESS` environment variables.
+# 2. Added `hostNetwork: true` and `dnsPolicy: ClusterFirstWithHostNet` to
+#    give pods direct access to the node's network for easier discovery.
+# 3. Added the `exclusive-topology` annotation as recommended for stability.
+
 apiVersion: jobset.x-k8s.io/v1alpha2
 kind: JobSet
 metadata:
@@ -7,18 +17,20 @@ metadata:
 spec:
   replicatedJobs:
     - name: dlrm-job
-      replicas: 4 # 16 chips / 4 chips per worker node = 4 replicas
+      replicas: 1
       template:
         spec:
           backoffLimit: 0
           template:
+            # Added annotation from the official guide for node placement stability.
             metadata:
               annotations:
                 gke-gcsfuse/volumes: "true"
+                alpha.jobset.sigs.k8s.io/exclusive-topology: cloud.google.com/gke-nodepool
             spec:
-              # FIX 1: Add subdomain to ensure DNS records are created correctly under the JobSet's headless service.
-              # This resolves the "NXDOMAIN" error.
-              subdomain: ${JOB_NAME}-dlrm-job
+              # Following the guide's networking model for multi-host JobSets.
+              hostNetwork: true
+              dnsPolicy: ClusterFirstWithHostNet
               serviceAccountName: chavoshi-dlrm-job-sa
               nodeSelector:
                 cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
@@ -39,42 +51,30 @@ spec:
                 - name: jax-dlrm
                   image: ${JAX_IMAGE_URL}
                   imagePullPolicy: Always
-                  # FIX 2: Use a shell wrapper to reliably set environment variables
-                  # that were previously failing with valueFrom.
-                  command:
-                    - "/bin/sh"
-                    - "-c"
+                  # The command is now direct, without any wrapper scripts.
+                  command: ["python", "/app/recml/inference/models/jax/DLRM_DCNv2/dlrm_main.py"]
                   args:
-                    - |
-                      set -ex
-                      # Set process count directly from the replica count.
-                      export JAX_PROCESS_COUNT=4
-                      # Reliably derive the process ID from the pod's hostname.
-                      export JAX_PROCESS_ID=$(echo $HOSTNAME | cut -d'-' -f5)
-                      # Execute the original python command
-                      python /app/recml/inference/models/jax/DLRM_DCNv2/dlrm_main.py \
-                        --verbosity=1 \
-                        --learning_rate=${LEARNING_RATE} \
-                        --batch_size=${BATCH_SIZE} \
-                        --embedding_size=${EMBEDDING_SIZE} \
-                        --embedding_threshold=${EMBEDDING_THRESHOLD} \
-                        --model_dir=${MODEL_DIR} \
-                        --file_pattern=${FILE_PATTERN} \
-                        --num_steps=${NUM_STEPS} \
-                        --save_checkpoint_interval=${CHECKPOINT_INTERVAL} \
-                        --restore_checkpoint=True \
-                        --eval_interval=${EVAL_INTERVAL} \
-                        --eval_file_pattern=${EVAL_FILE_PATTERN} \
-                        --eval_steps=${EVAL_STEPS} \
-                        --mode=train \
-                        --logging_interval=${LOGGING_INTERVAL}
+                    - --verbosity=1
+                    - --learning_rate=${LEARNING_RATE}
+                    - --batch_size=${BATCH_SIZE}
+                    - --embedding_size=${EMBEDDING_SIZE}
+                    - --embedding_threshold=${EMBEDDING_THRESHOLD}
+                    - --model_dir=${MODEL_DIR}
+                    - --file_pattern=${FILE_PATTERN}
+                    - --num_steps=${NUM_STEPS}
+                    - --save_checkpoint_interval=${CHECKPOINT_INTERVAL}
+                    - --restore_checkpoint=True
+                    - --eval_interval=${EVAL_INTERVAL}
+                    - --eval_file_pattern=${EVAL_FILE_PATTERN}
+                    - --eval_steps=${EVAL_STEPS}
+                    - --mode=train
+                    - --logging_interval=${LOGGING_INTERVAL}
                   volumeMounts:
                     - name: gcs-fuse-volume
                       mountPath: /gcs
                       readOnly: false
-                  env:
-                    - name: JAX_COORDINATOR_ADDRESS
-                      value: "${JOB_NAME}-dlrm-job-0-0.${JOB_NAME}-dlrm-job.default.svc.cluster.local:8476"
+                  # The environment variables are no longer needed because the JAX
+                  # runtime can discover the environment via the host network.
                   resources:
                     limits:
                       google.com/tpu: "4"
