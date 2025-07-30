@@ -1,0 +1,133 @@
+apiVersion: kubeflow.org/v1
+kind: TFJob
+metadata:
+ name: tpu-v6e-trainer-wo-mmtp
+spec:
+ runPolicy:
+   cleanPodPolicy: Running
+   ttlSecondsAfterFinished: 600
+ tfReplicaSpecs:
+   Master:
+     replicas: 1
+     restartPolicy: ExitCode
+     template:
+       metadata:
+         annotations:
+           sidecar.istio.io/inject: "false"
+         labels:
+           app: tfjob
+       spec:
+         serviceAccountName: training-worker
+         nodeSelector:
+           cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
+           cloud.google.com/gke-tpu-topology: 4x4
+         tolerations:
+           - effect: NoSchedule
+             key: dedicated
+             operator: Equal
+             value: tfjob
+           - effect: NoSchedule
+             key: google.com/tpu
+             operator: Equal
+             value: present
+         affinity:
+           podAffinity:
+             requiredDuringSchedulingIgnoredDuringExecution:
+               - labelSelector:
+                   matchExpressions:
+                     - key: training.kubeflow.org/job-name
+                       operator: In
+                       values:
+                         - "tpu-v6e-trainer-wo-mmtp"
+                 topologyKey: cloud.google.com/gke-nodepool
+           podAntiAffinity:
+             requiredDuringSchedulingIgnoredDuringExecution:
+               - labelSelector:
+                   matchExpressions:
+                     - key: training.kubeflow.org/job-name
+                       operator: NotIn
+                       values:
+                         - "tpu-v6e-trainer-wo-mmtp"
+                 topologyKey: cloud.google.com/gke-nodepool
+         containers:
+           - name: tensorflow
+             image: us-central1-docker.pkg.dev/moloco-ml/container-prod/tpu-training:python_package_bad_throughput
+             imagePullPolicy: Always
+             env:
+               - name: TF_JOB_PACKAGE_URIS
+                 value: ""
+             resources:
+               limits: {}
+               requests: {}
+             command:
+               - bash
+               - -c
+               - |
+                 <put command to run script here>
+   Worker:
+     replicas: 4
+     restartPolicy: ExitCode
+     template:
+       metadata:
+         annotations:
+           sidecar.istio.io/inject: "false"
+         labels:
+           app: tfjob
+       spec:
+         serviceAccountName: training-worker
+         # priorityClassName: development
+         nodeSelector:
+           cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
+           cloud.google.com/gke-tpu-topology: 4x4
+         tolerations:
+           - effect: NoSchedule
+             key: dedicated
+             operator: Equal
+             value: tfjob
+           - effect: NoSchedule
+             key: google.com/tpu
+             operator: Equal
+             value: present
+         affinity:
+           podAffinity:
+             requiredDuringSchedulingIgnoredDuringExecution:
+               - labelSelector:
+                   matchExpressions:
+                     - key: training.kubeflow.org/job-name
+                       operator: In
+                       values:
+                         - "tpu-v6e-trainer-wo-mmtp"
+                 topologyKey: cloud.google.com/gke-nodepool
+           podAntiAffinity:
+             requiredDuringSchedulingIgnoredDuringExecution:
+               - labelSelector:
+                   matchExpressions:
+                     - key: training.kubeflow.org/job-name
+                       operator: NotIn
+                       values:
+                         - "tpu-v6e-trainer-wo-mmtp"
+                 topologyKey: cloud.google.com/gke-nodepool
+         containers:
+           - name: tensorflow
+             args:
+               - bash
+               - -c
+               - |
+                 echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list && curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg && apt-get update -y && apt-get install google-cloud-cli -y
+                 bash tpu_tfjob_worker.sh
+             env:
+               - name: PYTHONUNBUFFERED
+                 value: "1"
+               - name: TPU_WORKER_HOSTNAMES
+                 value: tpu-v6e-trainer-wo-mmtp-worker-0.training.svc,tpu-v6e-trainer-wo-mmtp-worker-1.training.svc,tpu-v6e-trainer-wo-mmtp-worker-2.training.svc,tpu-v6e-trainer-wo-mmtp-worker-3.training.svc
+               - name: HOSTNAME
+                 valueFrom:
+                   fieldRef:
+                     fieldPath: metadata.labels['training.kubeflow.org/replica-index']
+             image: us-central1-docker.pkg.dev/moloco-ml/container-prod/tpu-training:python_package_bad_throughput
+             imagePullPolicy: Always
+             resources:
+               limits:
+                 google.com/tpu: "4"
+               requests:
+                 google.com/tpu: "4"

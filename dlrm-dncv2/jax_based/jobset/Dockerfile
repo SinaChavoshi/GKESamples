@@ -41,16 +41,15 @@ RUN \
     # numpy, so this step ensures the environment is stable.
     pip install --no-cache-dir "numpy<2.2.0,>=1.26.0" --force-reinstall
 
-# --- New Layers for Custom Script and Final Dependency Fix ---
+RUN pip install --no-cache-dir -U "jax[tpu]>0.4.23" -f https://storage.googleapis.com/jax-releases/libtpu_releases.html
 
-# 9. Copy the customized training script into the container.
+# 9. Copy local, modified dlrm_main.py to overwrite the one from the git repo.
+COPY dlrm_main.py /app/recml/inference/models/jax/DLRM_DCNv2/dlrm_main.py 
+
+# 10. Copy the customized training script into the container.
 # This script should be in the same directory where you run `docker build`.
 COPY train_and_checkpoint.sh .
 
-# 10. Make the training script executable.
+# 11. Make the training script executable.
 RUN chmod +x train_and_checkpoint.sh
-
-# 11. As a final step, install the specific JAX TPU version that is known to be compatible
-# with the TPU hardware, as identified during debugging. This resolves PJRT version errors.
-RUN pip install --no-cache-dir -U "jax[tpu]>0.4.23" -f https://storage.googleapis.com/jax-releases/libtpu_releases.html
 
