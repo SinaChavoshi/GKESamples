@@ -12,14 +12,6 @@ import random
 from typing import List
 
 import numpy as np
-# This is needed for TPU jobs that use the master/controller-worker
-# architecture to not load the TPU library on the controller.
-# On TPUv4, master-worker architecture is used on multi-host TPUs and on
-# TPUv6e, it is used in all configurations.
-# This needs to be set before importing tensorflow to avoid
-# the TPU library being loaded on the controller.
-# TODO(kunal.kukreja): Enhance the script to also support single-host
-# TPUv4 jobs.
 os.environ['TPU_LOAD_LIBRARY'] = '0'
 import tensorflow as tf
 import tensorflow_datasets as tfds
@@ -28,20 +20,6 @@ from tensorflow_recommenders.layers.embedding import TPUEmbedding
 
 
 def _get_grpc_endpoint_for_tpu_cluster_resolver(port_number: int = 8470) -> str:
-  """Build GRPC endpoints for TPU cluster resolver.
-
-  For a given TF_CONFIG = {"worker":["tf-worker-0.svc:2222"]}, this function
-  will return tf-worker-0.svc:8470.
-
-  Args:
-    port_number: The port number for GRPC endpoints.
-
-  Returns:
-    Comma-separated string of GRPC endpoints.
-
-  Raises:
-    ValueError: If no GRPC endpoint is found.
-  """
   grpc_endpoint = []
 
   tf_config = json.loads(os.environ['TF_CONFIG'])
@@ -80,7 +58,6 @@ SHUFFLE_BUF = 100_000
 use_cpu_strategy = os.environ.get('USE_CPU_STRATEGY', 'false').lower() == 'true'
 
 if not use_cpu_strategy:
-  # TPU setup
   tpu_name = _get_grpc_endpoint_for_tpu_cluster_resolver()
   print(f'Using TPU: {tpu_name}')
   resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu=tpu_name)
@@ -90,12 +67,10 @@ if not use_cpu_strategy:
 
 
   def shuffle(endpoints, device_assignment) -> List[str]:
-    # Hash the device_coordinates and map it to the original endpoint index.
     dc_idx_mapping = {}
     for i, coordinate in enumerate(device_assignment.topology.device_coordinates):
       dc_idx_mapping[coordinate.tobytes()] = i
 
-    # Sort the hash of device_coordinates and reorder the endpoints to match the sorted order.
     endpoints_as_list = endpoints.split(',')
     shuffled_endpoints = []
     for da_hash in sorted(dc_idx_mapping.keys()):
@@ -106,14 +81,8 @@ if not use_cpu_strategy:
   hardware_feature = tf.tpu.experimental.HardwareFeature(resolver.tpu_hardware_feature)
   embedding_v2 = (tf.tpu.experimental.HardwareFeature.EmbeddingFeature.V2)
 
-  # TODO(kunal.kukreja): consolidate the way you take these inputs. 
-  # At some places you've taken them using environment variables, 
-  # at some places you've taken them using CLI arguments.
-  #
-  # Check if endpoint shuffling is enabled via environment variable
   shuffle_endpoints = os.environ.get('SHUFFLE_ENDPOINTS', 'false').lower() == 'true'
 
-  # Check if device assignment is enabled via environment variable
   enable_device_assignment = os.environ.get('ENABLE_DEVICE_ASSIGNMENT', 'false').lower() == 'true'
 
   print("====================================> run time configurations are as follows:")
@@ -152,7 +121,6 @@ else:
 PER_REPLICA_BATCH_SIZE = GLOBAL_BATCH_SIZE // strategy.num_replicas_in_sync
 print(f'Per-replica batch size: {PER_REPLICA_BATCH_SIZE}')
 
-# Load and preprocess ratings
 ratings = tfds.load(
     'movielens/100k-ratings', split='train', data_dir=GCS_BUCKET, shuffle_files=False).map(
         lambda x: {
@@ -162,7 +130,6 @@ ratings = tfds.load(
         })
 
 
-# Dataset builder
 def prepare_dataset(split):
   """Prepare dataset for training or testing.
 
@@ -185,17 +152,14 @@ def prepare_dataset(split):
   return ds.with_options(options)
 
 
-# Build distributed datasets
 train_ds = prepare_dataset('train')
 test_ds = prepare_dataset('test')
 input_options = tf.distribute.InputOptions(experimental_fetch_to_device=False)
 dist_train_ds = strategy.experimental_distribute_dataset(train_ds, options=input_options)
 dist_test_ds = strategy.experimental_distribute_dataset(test_ds, options=input_options)
 
-# Optimizer
 optimizer = tf.keras.optimizers.legacy.Adagrad(learning_rate=0.1)
 
-# Embedding feature config
 user_table = tf.tpu.experimental.embedding.TableConfig(vocabulary_size=USER_VOCAB_SIZE, dim=EMBED_DIM, name='user_id')
 movie_table = tf.tpu.experimental.embedding.TableConfig(
     vocabulary_size=MOVIE_VOCAB_SIZE, dim=EMBED_DIM, name='movie_id')
@@ -209,7 +173,6 @@ feature_config = {
 }
 
 
-# Model definition
 class EmbeddingModel(tfrs.models.Model):
   """MovieLens embedding model for TPU training."""
 
@@ -237,14 +200,13 @@ class EmbeddingModel(tfrs.models.Model):
     Returns:
       Computed loss value.
     """
-    del training  # Unused argument
+    del training 
     emb = self.embedding_layer({'user_id': features['user_id'], 'movie_id': features['movie_id']})
     preds = self.ratings(tf.concat([emb['user_id'], emb['movie_id']], axis=1))
     return (tf.reduce_sum(self.task(labels=features['user_rating'], predictions=preds)) *
             (1 / (PER_REPLICA_BATCH_SIZE * strategy.num_replicas_in_sync)))
 
 
-# Main
 if __name__ == '__main__':
   parser = argparse.ArgumentParser()
   parser.add_argument('--training', action='store_true', help='Run training before evaluation')
@@ -256,7 +218,6 @@ if __name__ == '__main__':
 
   args = parser.parse_args()
   
-  # Set checkpoint directory from CLI argument
   CHECKPOINT_DIR = args.checkpoint_dir
 
   with strategy.scope():
@@ -277,7 +238,6 @@ if __name__ == '__main__':
     ckpt_path = manager.save()
     print(f'Checkpoint saved at: {ckpt_path}')
 
-  # Evaluation
   steps = TEST_SIZE // GLOBAL_BATCH_SIZE
   print('Starting evaluation...')
   results = model.evaluate(dist_test_ds, steps=steps)
