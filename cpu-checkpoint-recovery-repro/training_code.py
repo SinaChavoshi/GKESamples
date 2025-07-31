@@ -116,6 +116,12 @@ if not use_cpu_strategy:
   # Check if device assignment is enabled via environment variable
   enable_device_assignment = os.environ.get('ENABLE_DEVICE_ASSIGNMENT', 'false').lower() == 'true'
 
+  print("====================================> run time configurations are as follows:")
+  print(f'Shuffle endpoints: {shuffle_endpoints}')
+  print(f'Enable device assignment: {enable_device_assignment}')
+  print(f'Hardware feature: {hardware_feature}')
+
+
   if hardware_feature.embedding_feature == embedding_v2:
     tpu_system_metadata = resolver.get_tpu_system_metadata()
     device_assignment = tf.tpu.experimental.DeviceAssignment.build(topology, num_replicas=tpu_system_metadata.num_cores)
