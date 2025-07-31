@@ -74,7 +74,6 @@ spec:
               operator: Equal
               value: present
               effect: NoSchedule
-          # --- NECESSARY CHANGE: Restored the full, original affinity rules ---
           affinity:
             podAffinity:
               requiredDuringSchedulingIgnoredDuringExecution:
