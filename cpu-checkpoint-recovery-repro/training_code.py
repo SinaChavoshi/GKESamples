@@ -222,7 +222,7 @@ if __name__ == '__main__':
 
   with strategy.scope():
     model = EmbeddingModel()
-    model.compile(optimizer=optimizer)
+    # model.compile(optimizer=optimizer)
 
     checkpoint = tf.train.Checkpoint(optimizer=optimizer, model=model)
     manager = tf.train.CheckpointManager(checkpoint, CHECKPOINT_DIR, max_to_keep=3)
@@ -231,6 +231,8 @@ if __name__ == '__main__':
       print(f'Restored from {manager.latest_checkpoint}')
     else:
       print('Initializing from scratch.')
+
+    model.compile(optimizer=optimizer)
 
   if args.training:
     print('Starting training...')

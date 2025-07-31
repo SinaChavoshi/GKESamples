@@ -22,6 +22,8 @@ path = "gs://chavoshi-dlrm-training/checkpoints-repro/tpu-v6e-trainer-shuffle"
 reader = tf.train.load_checkpoint(path)
 layouts_dict = get_layouts(reader)
 
+print(layouts_dict) 
+
 #List Variables
 variables = tf.train.list_variables(path)
 for var, shape in variables:
