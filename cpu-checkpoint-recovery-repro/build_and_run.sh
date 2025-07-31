@@ -121,9 +121,11 @@ case "$ACTION" in
         ## --- Run local Docker container for CPU evaluation ---
         docker run --rm -it \
             -e USE_CPU_STRATEGY=true \
+            -e PYTHONUNBUFFERED=1 \
+            -e TF_CPP_MIN_LOG_LEVEL=0 \
             -v ~/.config/gcloud:/root/.config/gcloud:ro \
             "${IMAGE_URL}" \
-            python "${PYTHON_SCRIPT_NAME}" --checkpoint-dir "${CHECKPOINT_DIR_GCS}"
+            python "${PYTHON_SCRIPT_NAME}" --checkpoint-dir "${CHECKPOINT_DIR_GCS}" # <-- Note: No --training flag here
         ;;
 
     *)

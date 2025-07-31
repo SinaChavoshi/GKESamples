@@ -26,8 +26,8 @@ RUN pip install \
 pip
 RUN pip install --no-cache-dir tf-keras==2.19.0 tensorflow-serving-api==2.19.0
 RUN pip uninstall -y tensorflow
-# RUN pip install --no-cache-dir https://storage.googleapis.com/cloud-tpu-tpuvm-artifacts/tensorflow/tf-2.19.0/experimental/tensorflow_tpu-2.19.0-cp310-cp310-linux_x86_64.whl 
-RUN pip install --no-cache-dir https://storage.googleapis.com/cloud-tpu-tpuvm-artifacts/tensorflow/tf-2.19.0/tensorflow_tpu-2.19.0-cp310-cp310-linux_x86_64.whl
+RUN pip install --no-cache-dir https://storage.googleapis.com/cloud-tpu-tpuvm-artifacts/tensorflow/tf-2.19.0/experimental/tensorflow_tpu-2.19.0-cp310-cp310-linux_x86_64.whl 
+# RUN pip install --no-cache-dir https://storage.googleapis.com/cloud-tpu-tpuvm-artifacts/tensorflow/tf-2.19.0/tensorflow_tpu-2.19.0-cp310-cp310-linux_x86_64.whl
 RUN pip install --no-cache-dir libtpu==0.0.12
 RUN pip install --no-cache-dir tensorflow-datasets
 

@@ -52,6 +52,14 @@ spec:
                 value: "true"
               - name: TF_JOB_PACKAGE_URIS
                 value: ""
+              - name: TF_CPP_MIN_LOG_LEVEL
+                value: "0"
+              - name: TPU_STDERR_LOG_LEVEL
+                value: "0"
+              - name: TPU_MIN_LOG_LEVEL
+                value: "0"
+              - name: TPU_VLOG_LEVEL
+                value: "0"
             command:
               - bash
               - -c
@@ -106,6 +114,14 @@ spec:
                 valueFrom:
                   fieldRef:
                     fieldPath: metadata.name
+              - name: TF_CPP_MIN_LOG_LEVEL
+                value: "0"
+              - name: TPU_STDERR_LOG_LEVEL
+                value: "0"
+              - name: TPU_MIN_LOG_LEVEL
+                value: "0"
+              - name: TPU_VLOG_LEVEL
+                value: "0"
             image: ${IMAGE_URL}
             imagePullPolicy: Always
             resources:
