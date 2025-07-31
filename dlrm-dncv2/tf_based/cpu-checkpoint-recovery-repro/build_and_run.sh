@@ -66,6 +66,17 @@ export IMAGE_URL="${AR_REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO_NAME}/${IM
 export CHECKPOINT_DIR_GCS="gs://${GCS_BUCKET_NAME}/checkpoints-repro/${TFJOB_NAME}"
 
 ## ------------------- Action Dispatcher ------------------- ##
+## --- Conditional Docker Build & Push ---
+if [ "$REBUILD_FLAG" = true ] || ! docker image inspect "${IMAGE_URL}" &> /dev/null; then
+    echo -e "${BLUE}🚀 Building Docker image from '${DOCKERFILE_NAME}'...${NC}"
+    docker build -f "${DOCKERFILE_NAME}" -t "${IMAGE_URL}" . --platform linux/amd64
+    echo -e "${BLUE}ଠ Pushing image to Artifact Registry...${NC}"
+    docker push "${IMAGE_URL}"
+    echo -e "${GREEN}✅ Image pushed to ${IMAGE_URL}.${NC}"
+else
+    echo -e "${GREEN}▶ Skipping Docker build. Using existing image: ${IMAGE_URL}${NC}"
+fi
+
 case "$ACTION" in
     train)
         echo -e "${GREEN}▶ Running action: train (config: $CONFIG)${NC}"
@@ -75,17 +86,6 @@ case "$ACTION" in
         gcloud container clusters get-credentials ${CLUSTER_NAME} ${GKE_LOCATION_FLAG} --project ${PROJECT_ID}
         echo -e "${BLUE}🔐 Configuring Docker for ${AR_REGION}...${NC}"
         gcloud auth configure-docker "${AR_REGION}-docker.pkg.dev"
-
-        ## --- Conditional Docker Build & Push ---
-        if [ "$REBUILD_FLAG" = true ] || ! docker image inspect "${IMAGE_URL}" &> /dev/null; then
-            echo -e "${BLUE}🚀 Building Docker image from '${DOCKERFILE_NAME}'...${NC}"
-            docker build -f "${DOCKERFILE_NAME}" -t "${IMAGE_URL}" . --platform linux/amd64
-            echo -e "${BLUE}ଠ Pushing image to Artifact Registry...${NC}"
-            docker push "${IMAGE_URL}"
-            echo -e "${GREEN}✅ Image pushed to ${IMAGE_URL}.${NC}"
-        else
-            echo -e "${GREEN}▶ Skipping Docker build. Using existing image: ${IMAGE_URL}${NC}"
-        fi
 
         ## --- Generate Worker Hostnames ---
         WORKER_HOSTS=""
@@ -125,7 +125,7 @@ case "$ACTION" in
             -e TF_CPP_MIN_LOG_LEVEL=0 \
             -v ~/.config/gcloud:/root/.config/gcloud:ro \
             "${IMAGE_URL}" \
-            python "${PYTHON_SCRIPT_NAME}" --checkpoint-dir "${CHECKPOINT_DIR_GCS}" # <-- Note: No --training flag here
+            python -u "${PYTHON_SCRIPT_NAME}" --checkpoint-dir "${CHECKPOINT_DIR_GCS}" 
         ;;
 
     *)

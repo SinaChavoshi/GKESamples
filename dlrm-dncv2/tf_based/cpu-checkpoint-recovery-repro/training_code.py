@@ -232,7 +232,7 @@ if __name__ == '__main__':
     else:
       print('Initializing from scratch.')
 
-    model.compile(optimizer=optimizer)
+  model.compile(optimizer=optimizer)
 
   if args.training:
     print('Starting training...')

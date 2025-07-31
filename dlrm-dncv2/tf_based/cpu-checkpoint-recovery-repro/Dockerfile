@@ -31,6 +31,9 @@ RUN pip install --no-cache-dir tensorflow-datasets
 RUN git clone https://github.com/tensorflow/recommenders.git /recommenders
 ENV PYTHONPATH "${PYTHONPATH}:/recommenders"
 
+COPY tpu_embedding_for_serving.py /usr/local/lib/python3.10/site-packages/tensorflow/python/tpu/tpu_embedding_for_serving.py
+COPY tpu_embedding_base.py /usr/local/lib/python3.10/site-packages/tensorflow/python/tpu/tpu_embedding_base.py
+COPY tpu_embedding_layer.py /recommenders/tensorflow_recommenders/layers/embedding/tpu_embedding_layer.py
 COPY tpu-runtime.service /etc/systemd/system/tpu-runtime.service
 COPY training_code.py /training_code.py
 COPY tpu_tfjob_worker.sh /usr/local/bin/tpu_tfjob_worker.sh
