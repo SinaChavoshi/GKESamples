@@ -233,6 +233,7 @@ class TPUEmbeddingForServing(tpu_embedding_base.TPUEmbeddingBase):
     return tc
 
   def _create_variables_from_stacked_tables(self):
+    print("===> _create_variables_from_stacked_tables() <=== ")
     sc_layouts = sparse_core_layout_pb2.SparseCoreTableLayouts()
     sc_layouts.ParseFromString(self._get_sparse_core_table_layouts_str())
     stacked_table_name_to_layouts = {}
@@ -245,7 +246,12 @@ class TPUEmbeddingForServing(tpu_embedding_base.TPUEmbeddingBase):
     variables = {}
     for stacked_table_name, layouts in stacked_table_name_to_layouts.items():
       logging.info(
-          "Loading stacked table state variables(%s) for %s tables",
+          "from log ===> Loading stacked table state variables(%s) for %s tables",
+          stacked_table_name,
+          len(layouts),
+      )
+      print(
+          "from print ===> Loading stacked table state variables(%s) for %s tables",
           stacked_table_name,
           len(layouts),
       )
@@ -269,16 +275,20 @@ class TPUEmbeddingForServing(tpu_embedding_base.TPUEmbeddingBase):
       A dict of dicts. The outer dict is keyed by the table names and the inner
       dicts are keyed by 'parameters' and the slot variable names.
     """
+    print (" ===> running inside _create_variables_and_slots() <=== ")
     self._track_restore_info_for_cpu()
     variables = {}
     # If there are stacked variables from SC checkpoint process those
     # first
     stacked_variables = self._create_variables_from_stacked_tables()
+    print ("===> stacked_variables: ", stacked_variables)
     for table in self._table_config:
+      print("===> table.name: ", table.name)
       if table.name in stacked_variables:
         variables[table.name] = {"parameters": stacked_variables[table.name]}
       else:
         variables[table.name] = self._create_variables(table, trainable=True)
+    print ("===> variables: ", variables)
     return variables
 
   def embedding_lookup(
@@ -610,3 +620,4 @@ def _embedding_lookup_for_ragged_tensor(
           table, inp, weight, feature.table.combiner
       )
   return ragged_output
+

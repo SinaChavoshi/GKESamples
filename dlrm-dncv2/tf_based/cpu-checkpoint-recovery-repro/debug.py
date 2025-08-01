@@ -17,6 +17,7 @@ def get_layouts(reader):
   else:
     print("No layouts found")
 
+print("Checkpoint for shuffled:")
 path = "gs://chavoshi-dlrm-training/checkpoints-repro/tpu-v6e-trainer-shuffle"
 
 reader = tf.train.load_checkpoint(path)
@@ -34,3 +35,27 @@ variables = tf.train.list_variables(path)
 for var, shape in variables:
     if 'embedding' in var:
       print("variable: ", var, "shape: ", shape)
+
+print(reader.get_tensor("model/embedding_layer/_tpu_embedding/movie_id_user_id/.ATTRIBUTES/VARIABLE_VALUE"))
+
+print("Checkpoint for Device Assignment:")
+path = "gs://chavoshi-dlrm-training/checkpoints-repro/tpu-v6e-trainer-da"
+
+reader = tf.train.load_checkpoint(path)
+layouts_dict = get_layouts(reader)
+
+print(layouts_dict) 
+
+#List Variables
+variables = tf.train.list_variables(path)
+for var, shape in variables:
+    if '_tpu_embedding' in var:
+      print("variable: ", var, "shape: ", shape)
+
+variables = tf.train.list_variables(path)
+for var, shape in variables:
+    if 'embedding' in var:
+      print("variable: ", var, "shape: ", shape)
+
+
+print(reader.get_tensor("model/embedding_layer/_tpu_embedding/movie_id_user_id/.ATTRIBUTES/VARIABLE_VALUE"))
